@@ -4,7 +4,7 @@ from pydantic import BaseModel, EmailStr, Field, field_validator
 
 
 class DataImportSchema(BaseModel):
-    """Input parameters for the data import sub-graph."""
+    """Input parameters for the data node in the core-graph."""
 
     ticker_symbol: str
     # default_factory runs at instance creation, so the dates are always relative to today.
