@@ -74,6 +74,7 @@ Then wait for the user's decision. Do not implement a fix on your own initiative
 ## Comments and docstrings
 - For complex code, add compact comments explaining its syntax and semantics in a beginner-friendly way. One sentence if possible, two at most.
 - For every class, method, and function, include a compact docstring. Never longer than two sentences.
+- Always use simple english
 
 ## Framework
 The project is built on LangGraph.
