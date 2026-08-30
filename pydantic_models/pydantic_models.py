@@ -181,3 +181,10 @@ class FSAPSchema(BaseModel):
     )
     # frozen keeps the number of history years fixed once the model is created.
     n_years_history: int = Field(default=5, frozen=True)
+
+
+class CoreGraphStateSchema(BaseModel):
+    """Holds the complete state of the core-graph."""
+
+    import_config: DataImportSchema
+    fsap_data: FSAPSchema
