@@ -1,9 +1,6 @@
 ---
 name: create-plan
-description: Builds an implementation plan for a goal or reviews a plan the user
-  already has, resolving every open decision with the user first. Use when the
-  user asks for a plan, wants an approach before coding, or presents a plan to
-  be checked.
+description: Builds an implementation plan for a goal. The complete plan must be defined by the user. Your goal is only to help the user create such a plan.
 ---
 
 # Create a plan
@@ -11,65 +8,11 @@ description: Builds an implementation plan for a goal or reviews a plan the user
 Produce a plan the user can approve and then have implemented. Do not write
 any code and do not modify any file while this skill is active.
 
-## Step 1 — Understand the project
+# Your Goal
+The USER must create the plan, not you! If the user doesn't give you enough information to complete the user-defined goal, then keep asking until every little technical detail is defined by the user. You NEVER define anything by yourself — not even small details. So the process is the following:
+1. The user defines a goal with a rough plan of how to achieve that goal.
+2. Your task is to identify gaps within that plan and ask the user for every little detail needed to fill those gaps.
+3. You never suggest anything yourself; you only ask the user until the plan is complete. Only if the user's suggestions are technically wrong do you explain why they are wrong and make a suggestion yourself for how to solve them.
 
-Read enough of the codebase to ground the plan in what actually exists:
-structure, existing patterns, and the files the goal touches. Never plan
-against assumed code.
-
-## Step 2 — Choose the mode
-
-**The user provided a plan** → Review it. Check whether it actually reaches
-the stated goal, whether any step is missing, and whether it conflicts with
-the existing code. Point out gaps concretely; do not rewrite the plan silently.
-
-**The user provided only a goal** → Derive the plan yourself. List every
-variable, definition and strategy decision the goal depends on.
-
-Both modes then continue with Step 3.
-
-## Step 3 — Resolve every open decision
-
-Every technical and non-technical decision of implementation belongs to the user, not to you. Never assume a default.
-
-Ask in rounds:
-
-- One round at a time, grouping decisions that are independent of each other.
-- Each question offers two or three concrete options, your recommendation with
-  a one-line reason, and the explicit option: "or define it yourself".
-- Adapt every following question to the answers already given. If an answer
-  makes a later question obsolete, drop it. If it opens a new decision, ask it.
-
-Repeat until every detail is defined by the user. Do not draft the plan while questions are still open.
-
-## Step 4 — Present the plan
-
-Output the plan directly in the chat. No file, no artifact.
-
-Structure:
-
-**Goal** — one sentence.
-
-**Decisions** — the choices made, one line each, so the user can see what was
-locked in.
-
-**Steps** — numbered, in implementation order. Each step names what happens
-and why.
-
-**Files affected** — a table listing every file with its change type
-(`new` / `modified` / `deleted`) and one line on what changes in it. This
-section is mandatory; a plan without it is incomplete.
-
-**Open risks** — anything that could still go wrong, or nothing.
-
-## Step 5 — Hand over
-
-End by asking whether to implement the plan as written. Ask as plain text in
-the chat — do not use a clickable question or option widget. Wait for
-confirmation. Do not start implementing on your own initiative.
-
-## Rules
-
-- Keep the plan as simple as the goal allows. Fewer steps beat more steps.
-- Plan only what the user asked for. Do not add improvements to the scope (if not necessary).
-- If the goal cannot be reached as stated, say so before planning around it.
+# The level of technical detail the user must provide
+The user must provide very specific information. For example: if the user plans a new method for a class, the different arguments and the logic implementation (if, else, ...) must be completely defined by the user, so that you only implement exactly what the user told you, and not what you decided yourself.
