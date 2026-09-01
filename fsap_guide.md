@@ -1,8 +1,14 @@
-# Das FSAP 7-Schritte-Forecasting: Ablauf, Rechenschritte, Interpretation
+# FSAP: 7-Schritte-Forecasting und Bewertung -- Ablauf, Rechenschritte, Interpretation
 
-Diese Datei erklaert den kompletten Forecasting-Prozess so, wie er im Quell-PDF steht,
-in nicht-technischer Sprache. Fuer jeden Schritt steht am Ende, was in Python dafuer
-gebaut werden muss.
+Diese Datei erklaert den kompletten FSAP-Prozess in nicht-technischer Sprache. Fuer
+jeden Schritt steht am Ende, was in Python dafuer gebaut werden muss.
+
+Sie hat zwei Teile mit **zwei verschiedenen Quellen**:
+
+| Teil | Inhalt | Quelle |
+|---|---|---|
+| **Schritte 1-7** | Prognose der drei Jahresabschluesse | das Quell-PDF (Buchkapitel 10) |
+| **Kapitel 8** | Bewertung und Kaufentscheidung | Blatt `Valuation` aus `fsap/FSAP - Starbucks.xlsx` |
 
 ---
 
@@ -26,7 +32,12 @@ sie zusaetzlich dabei.
 **Wichtiger Hinweis zur Bewertung:** Das PDF endet nach Schritt 7. Die eigentliche
 Bewertung (DCF, Residual Income, Kaufentscheidung) ist Kapitel 11-14 desselben Buchs
 und **nicht** Teil dieses Auszugs. Die 7 Schritte liefern die *Prognosen*, die
-spaeter der Input der Bewertung sind.
+der Input der Bewertung sind.
+
+Die Bewertung ist trotzdem dokumentiert -- siehe **Kapitel 8** dieser Datei. Quelle
+dort ist nicht das PDF, sondern das Blatt `Valuation` der Datei
+`fsap/FSAP - Starbucks.xlsx`, also die rechnende Referenzimplementierung von FSAP
+selbst.
 
 ---
 
@@ -1606,8 +1617,766 @@ Vollstaendige Bilanz      -> Kapitalflussrechnung
 ## Naechster Schritt nach Schritt 7
 
 Die 7 Schritte liefern prognostizierte Abschluesse -- noch keine Kaufentscheidung.
-Dafuer ist eine Bewertung noetig (Discounted Cash Flow, Residual Income oder
-Dividendenmodell), die auf diesen Prognosen aufsetzt. Diese Verfahren stehen in den
-Kapiteln 11-14 desselben Buchs und sind **nicht** Teil des vorliegenden PDF-Auszugs.
+Dafuer ist eine Bewertung noetig, die auf diesen Prognosen aufsetzt. Sie ist der
+Gegenstand des folgenden Kapitels 8.
 
-Der wichtigste Bruecken-Wert ist der freie Cashflow aus Schritt 7.
+Die Bruecken-Werte von Schritt 7 in die Bewertung sind der operative Cashflow, der
+Investitions-Cashflow und die Veraenderung des Kassenbestands.
+
+---
+---
+
+# Kapitel 8: Die Bewertung -- von der Prognose zur Kaufentscheidung
+
+> **Quelle dieses Kapitels:** Nicht das PDF, sondern das Blatt `Valuation` der Datei
+> `fsap/FSAP - Starbucks.xlsx` (FSAP Version 9.0). Zitiert wird als
+> `[Valuation!Zelle]`. Die Guide-Texte von FSAP stehen im Blatt in Spalte L und werden
+> als `[Valuation!Ln]` zitiert.
+>
+> Die zugehoerigen Buchkapitel nennt FSAP selbst: Dividendenmodell = Kap. 11
+> [Valuation!L68], Free-Cash-Flow-Modelle = Kap. 12 [Valuation!L95, L244],
+> Residual Income = Kap. 13 [Valuation!L151], Market-to-Book = Kap. 14
+> [Valuation!L208].
+
+## Warum es ueberhaupt eine Bewertung braucht
+
+Die Schritte 1-7 sagen, **was die Firma verdienen wird**. Sie sagen nicht, **was die
+Aktie wert ist**. Dazwischen liegt eine eigene Rechnung: Zukuenftige Zahlungen sind
+weniger wert als heutige Zahlungen -- wegen Zinsen und wegen Risiko.
+
+Die Bewertung beantwortet daher zwei Fragen:
+1. Welche Zahlungen fliessen den Aktionaeren zu? (kommt aus Schritt 1-7)
+2. Was sind diese Zahlungen heute wert? (das ist Kapitel 8)
+
+Am Ende steht ein **Wert je Aktie**. Dieser wird mit dem **Boersenkurs** verglichen.
+Der Vergleich *ist* die Kaufentscheidung.
+
+## Der Ablauf im Ueberblick
+
+```
+Prognosen aus Schritt 1-7
+    v
+8.1  Kapitalkosten bestimmen  (Diskontierungssatz)
+    v
+8.2  Zahlungsstrom je Modell ableiten  (Year +1 bis +5)
+    v
+8.3  Fortfuehrungswert berechnen  (Year +6 und danach)
+    v
+8.4  Alles auf heute abzinsen
+    v
+8.5  Mitteljahres-Korrektur
+    v
+8.6  Durch Aktienanzahl teilen  ->  Wert je Aktie
+    v
+8.7  Mit Boersenkurs vergleichen  ->  Kaufen oder Verkaufen
+```
+
+FSAP rechnet **fuenf Modelle parallel**. Vier davon muessen exakt denselben Wert
+liefern; das fuenfte darf leicht abweichen. Das ist kein Zufall, sondern eine
+eingebaute Kontrolle -- dazu Abschnitt 8.8.
+
+---
+
+## 8.1 Die Kapitalkosten
+
+> Fundstelle: [Valuation!A22-F59]
+
+Der Diskontierungssatz drueckt aus, welche Rendite ein Investor fuer das eingegangene
+Risiko verlangt. Je riskanter, desto hoeher der Satz, desto niedriger der heutige Wert.
+
+### 8.1.1 Eigenkapitalkosten (CAPM)
+
+FSAP verwendet das Capital Asset Pricing Model [Valuation!L36]:
+
+> "FSAP computes the expected rate of return on equity using the market model version
+> of the CAPM."
+
+```
+Eigenkapitalkosten = Risikofreier Zins + Beta x Marktrisikopraemie
+```
+
+Formel im Blatt: `F36 = F34 + F33 * F35` [Valuation!F36]
+
+Starbucks-Werte [Valuation!F33-F36]:
+```
+Beta                  = 0,75
+Risikofreier Zins     = 2,7 %
+Marktrisikopraemie    = 6,0 %
+
+Eigenkapitalkosten    = 0,027 + 0,75 x 0,06 = 0,027 + 0,045 = 7,2 %
+```
+
+Die drei Bausteine:
+
+- **Risikofreier Zins:** Rendite einer sicheren Staatsanleihe. FSAP empfiehlt
+  3- bis 5-jaehrige US-Treasuries [Valuation!L34].
+- **Beta:** Wie stark schwankt die Aktie gegenueber dem Gesamtmarkt? Beta = 1 bedeutet
+  Gleichlauf, Beta = 0,75 bedeutet 25 % weniger Schwankung als der Markt -- Starbucks
+  gilt also als defensiver als der Durchschnitt.
+- **Marktrisikopraemie:** Aufschlag, den Aktien gegenueber sicheren Anlagen bieten
+  muessen. FSAP nennt eine plausible Spanne [Valuation!L35]:
+
+  > "Reasonable estimates commonly range from 3% to 9%."
+
+### 8.1.2 Fremdkapitalkosten
+
+```
+Fremdkapitalkosten nach Steuern = Zinssatz vor Steuern x (1 - Steuersatz)
+```
+
+Formel im Blatt: `F42 = F40 * (1 + F41)` [Valuation!F42]
+
+**Achtung Vorzeichen:** FSAP fuehrt den Steuersatz als negative Zahl (-0,34), weil
+Aufwendungen im Blatt negativ dargestellt werden. `(1 + (-0,34))` ergibt daher `0,66`.
+In einer Python-Umsetzung mit positivem Steuersatz lautet die Formel
+`Zinssatz x (1 - Steuersatz)`.
+
+Starbucks [Valuation!F40-F42]:
+```
+Zinssatz vor Steuern  = 2,7067 %
+Steuersatz            = 34,0 %
+Nach Steuern          = 0,027067 x (1 - 0,34) = 1,7864 %
+```
+
+**Warum nach Steuern?** Zinsen mindern den steuerpflichtigen Gewinn. Von 100 Euro
+Zinsen traegt der Staat bei 34 % Steuersatz effektiv 34 Euro -- Fremdkapital kostet die
+Firma real nur 66 % des Nominalzinses. Dieser Effekt heisst *tax shield*.
+
+### 8.1.3 Gewichtete Kapitalkosten (WACC)
+
+```
+WACC = Gewicht(EK) x Eigenkapitalkosten
+       + Gewicht(FK) x Fremdkapitalkosten nach Steuern
+       + Gewicht(Vorzugsaktien) x deren Kosten
+       + Gewicht(Minderheiten) x deren Kosten
+```
+
+Formel im Blatt: `F59 = (F55*F36) + (F56*F42) + (F57*F47) + (F58*F52)`
+[Valuation!F59]
+
+Die Gewichte [Valuation!F55-F58]:
+```
+Gewicht(EK) = Marktwert EK / (Marktwert EK + FK + Vorzugsaktien + Minderheiten)
+```
+
+**Wichtig:** Der Zaehler ist der **Marktwert**, nicht der Buchwert [Valuation!F26]:
+```
+Marktwert Eigenkapital = Aktienkurs x Anzahl Aktien
+                       = 56,84 x 1.485,1 = 84.413,1 Mio.
+```
+
+Starbucks [Valuation!F55-F59]:
+```
+Gewicht(EK)  = 84.413,1 / (84.413,1 + 2.402) = 97,23 %
+Gewicht(FK)  = 2.402 / 86.815,1              =  2,77 %
+
+WACC = 0,9723 x 0,072 + 0,0277 x 0,017864 = 0,07001 + 0,00049 = 7,050 %
+```
+
+Der WACC liegt hier nur knapp unter den Eigenkapitalkosten, weil Starbucks -- gemessen
+zu Marktwerten -- fast ausschliesslich eigenkapitalfinanziert ist.
+
+### Interpretation der Kapitalkosten
+
+- **Hoehere Kapitalkosten -> niedrigerer Unternehmenswert.** Der Zusammenhang ist
+  stark. Die Sensitivitaetstabelle [Valuation!B185-J198] zeigt es drastisch: bei 6 %
+  Diskontsatz und 3 % Wachstum ergeben sich 93,09 USD je Aktie, bei 12 % nur noch
+  30,31 USD -- derselbe Zahlungsstrom, dreifacher Wertunterschied.
+- **Beta ist der subjektivste Baustein.** Es wird aus historischen Kursdaten
+  geschaetzt und variiert je nach Zeitfenster erheblich.
+- **Der WACC ist zirkulaer.** Er braucht den Marktwert des Eigenkapitals als Gewicht --
+  aber genau den will man erst berechnen. Mehr dazu in Abschnitt 8.8.
+
+### Was in Python zu bauen ist
+
+**Input:**
+- Beta: `FMP.get_profile()` -> Feld `beta`
+- Risikofreier Zins: `FMP.get_treasury_rates()` (3- oder 5-Jahres-Satz)
+- Marktrisikopraemie: **kein API-Wert** -- muss gesetzt werden
+- Aktienkurs: `FMP.get_quote()` -> `price`
+- Aktienanzahl: `FMP.get_shares_float()` -> `outstandingShares`
+- Fremdkapital: `FMP.get_balance_sheet()` -> `totalDebt`
+- Zinssatz und Steuersatz: aus Schritt 4 und 5
+
+**Rechenlogik:**
+1. Eigenkapitalkosten nach CAPM
+2. Fremdkapitalkosten nach Steuern
+3. Marktwert des Eigenkapitals
+4. Gewichte berechnen
+5. WACC als gewichtete Summe
+
+**Vom Nutzer zu entscheiden:**
+- Marktrisikopraemie: welcher Wert? (FSAP nutzt 6,0 %, Spanne 3-9 % [Valuation!L35])
+- Risikofreier Zins: welche Laufzeit? Tagesaktuell oder Durchschnitt?
+- Beta aus FMP uebernehmen oder selbst aus Kursdaten schaetzen?
+- Vorzugsaktien und Minderheiten modellieren oder als null annehmen?
+
+---
+
+## 8.2 Die fuenf Bewertungsmodelle
+
+Alle fuenf folgen demselben Muster: Zahlungsstrom bestimmen, abzinsen, summieren,
+Fortfuehrungswert addieren, durch Aktienanzahl teilen. Sie unterscheiden sich nur
+darin, **welchen** Zahlungsstrom sie betrachten.
+
+### Modell 1: Dividendenmodell
+
+> Fundstelle: [Valuation!A68-E86], Buch Kap. 11 [Valuation!L68]
+
+Die Grundidee: Ein Aktionaer erhaelt Dividenden und Geld aus Aktienrueckkaeufen. Der
+Wert der Aktie ist der Barwert dieser Zahlungen.
+
+```
+Netto-Dividende = Dividenden an Aktionaere
+                  - Erloese aus Aktienausgaben
+                  + Aktienrueckkaeufe
+```
+
+Formeln im Blatt [Valuation!E70-E73]:
+```
+E70 = Dividendenzahlungen                     (aus Forecasts)
+E71 = Veraenderung gezeichnetes Kapital       (negativ = Ausgabe)
+E72 = Aktienrueckkaeufe
+E73 = SUMME(E70:E72)
+```
+
+Starbucks Year +1 [Valuation!E73]: `3.839,94 Mio.`
+
+**Warum werden Rueckkaeufe addiert?** Sie sind wirtschaftlich dasselbe wie eine
+Dividende -- Geld fliesst von der Firma zu den Aktionaeren, nur in anderer Form.
+**Warum werden Aktienausgaben abgezogen?** Dabei fliesst Geld in die Gegenrichtung.
+
+**Diskontsatz:** Eigenkapitalkosten (`F36`), nicht WACC [Valuation!E75]. Begruendung:
+Der Zahlungsstrom fliesst ausschliesslich an Eigenkapitalgeber.
+
+### Modell 2: Free Cash Flow to Equity
+
+> Fundstelle: [Valuation!A95-E116], Buch Kap. 12 [Valuation!L95]
+
+Statt der tatsaechlich ausgeschuetteten Betraege wird das Geld betrachtet, das
+**ausschuettbar waere**.
+
+```
+FCF to Equity = Operativer Cashflow
+                - Zunahme der betriebsnotwendigen Kasse
+                + Investitions-Cashflow
+                + Netto-Cashflow aus Fremdfinanzierung
+                + Anpassung Finanzanlagen
+                + Anpassung Vorzugsaktien und Minderheiten
+```
+
+Formeln im Blatt [Valuation!E97-E103]:
+```
+E97  = Operativer Cashflow                    (Forecasts Zeile 297)
+E98  = -Veraenderung der Kasse                (Forecasts Zeile 315)
+E99  = Investitions-Cashflow                  (Forecasts Zeile 305)
+E100 = Veraenderung kurz- + langfristige Schulden
+E101 = -Anpassung Finanzanlagen
+E102 = Vorzugsaktien und Minderheiten
+E103 = SUMME(E97:E102)
+```
+
+**Die Zeile E98 verdient Aufmerksamkeit** [Valuation!L98]:
+
+> "As firms grow, they typically require larger cash balances for liquidity in
+> operating activities. FSAP is programmed to automatically adjust free cash flows for
+> the change in the cash balance, which is assumed to be required for operations."
+
+Uebersetzt: Waechst die Firma, muss sie mehr Kasse vorhalten. Dieses Geld ist gebunden
+und steht den Aktionaeren **nicht** zur Verfuegung. Es wird deshalb abgezogen. Genau
+diese Kasse wurde in Schritt 3 ueber die Umschlagsdauer prognostiziert.
+
+**Diskontsatz:** Eigenkapitalkosten [Valuation!E105].
+
+### Modell 3: Residual Income
+
+> Fundstelle: [Valuation!A151-E173], Buch Kap. 13 [Valuation!L151]
+
+Der konzeptionell interessanteste Ansatz. Grundidee: Eine Firma schafft nur dann Wert,
+wenn sie **mehr verdient als die Kapitalkosten verlangen**.
+
+```
+Geforderter Gewinn = Buchwert Eigenkapital (Jahresanfang) x Eigenkapitalkosten
+Residualgewinn     = Tatsaechlicher Gewinn - Geforderter Gewinn
+```
+
+Formeln im Blatt [Valuation!E153-E158]:
+```
+E153 = Gesamtergebnis fuer Stammaktionaere
+E155 = Buchwert Eigenkapital zu Jahresbeginn (t-1)
+E157 = E155 * F36
+E158 = E153 - E157
+```
+
+Starbucks Year +1 [Valuation!E153-E158]:
+```
+Gesamtergebnis      = 2.794,30
+Buchwert (Anfang)   = 5.818,00
+Geforderter Gewinn  = 5.818,00 x 0,072 = 418,90
+Residualgewinn      = 2.794,30 - 418,90 = 2.375,41
+```
+
+Interpretation: Die Aktionaere haben 5.818 Mio. investiert und verlangen darauf 7,2 %,
+also 418,9 Mio. Starbucks verdient 2.794,3 Mio. -- 2.375,4 Mio. mehr als gefordert.
+Diese Uebererfuellung ist die Wertschaffung.
+
+**Der entscheidende Unterschied zu den anderen Modellen** [Valuation!E165]:
+
+```
+Unternehmenswert = Buchwert des Eigenkapitals heute
+                   + Barwert aller kuenftigen Residualgewinne
+```
+
+Das Modell startet also beim bereits vorhandenen Buchwert und addiert nur, was darueber
+hinaus erwirtschaftet wird. Praktischer Vorteil: Ein Teil des Werts (hier 5.818 von
+98.159 Mio.) ist ein harter Bilanzwert und keine Prognose. Das macht das Modell weniger
+empfindlich gegenueber Prognosefehlern.
+
+**Warum Gesamtergebnis und nicht Nettogewinn?** Damit die Verknuepfung mit der Bilanz
+sauber bleibt: Jede Eigenkapitalaenderung muss entweder Ergebnis oder Ausschuettung
+sein. Diese Bedingung heisst *clean surplus relation* und ist Voraussetzung dafuer,
+dass das Modell denselben Wert liefert wie die anderen.
+
+### Modell 4: Residual Income Market-to-Book
+
+> Fundstelle: [Valuation!A207-E234], Buch Kap. 14 [Valuation!L208]
+
+Rechnerisch identisch mit Modell 3, aber in Verhaeltniszahlen statt Geldbetraegen.
+Ergebnis ist zunaechst ein **Kurs-Buchwert-Verhaeltnis**, das dann mit dem Buchwert
+multipliziert wird.
+
+```
+Implizite ROCE      = Gesamtergebnis / Buchwert EK (Jahresanfang)
+Residual-ROCE       = Implizite ROCE - Eigenkapitalkosten
+Kumul. Wachstumsfaktor = Buchwert EK (t-1) / Buchwert EK (heute)
+Beitrag             = Residual-ROCE x Kumul. Wachstumsfaktor
+```
+
+Formeln im Blatt [Valuation!E214-E217, E224-E229]:
+```
+E214 = E210 / E212
+E215 = E214 - F36
+E216 = E212 / $E$212
+E217 = E215 * E216
+...
+E224 = 1                              (fuer den Buchwert selbst)
+E225 = E223 + E224
+E227 = E225 * E226                    -> implizites Kurs-Buchwert-Verhaeltnis
+E229 = E227 * E228                    -> Wert des Eigenkapitals
+```
+
+Die `1` in Zeile E224 steht fuer den vorhandenen Buchwert (Verhaeltnis 1,0 zu sich
+selbst); alles darueber ist Wertschaffung.
+
+**Interpretation:** Ein Kurs-Buchwert-Verhaeltnis ueber 1 bedeutet, dass der Markt der
+Firma zutraut, mehr als die Kapitalkosten zu verdienen. Fuer Starbucks ergibt sich
+`98.159 / 5.818 = 16,9` -- ein sehr hoher Wert, der die Erwartung dauerhaft hoher
+Renditen ausdrueckt.
+
+FSAP merkt an, dass die Sensitivitaetsanalyse dieses Modells zwangslaeufig identisch zu
+Modell 3 ist [Valuation!A236] -- die Modelle sind algebraisch aequivalent.
+
+### Modell 5: Free Cash Flow to All Debt and Equity
+
+> Fundstelle: [Valuation!A244-E270], Buch Kap. 12 [Valuation!L244]
+
+Das einzige Modell, das den WACC verwendet. Es bewertet zuerst das **gesamte
+Unternehmen** (Eigen- und Fremdkapitalgeber zusammen) und zieht danach die Schulden ab.
+
+```
+FCF All Debt and Equity = Operativer Cashflow
+                          + Zinsaufwand nach Steuern
+                          - Zinsertrag nach Steuern
+                          - Zunahme der betriebsnotwendigen Kasse
+                          + Investitions-Cashflow
+                          + Anpassung Finanzanlagen
+```
+
+Formeln im Blatt [Valuation!E246-E253]:
+```
+E246 = Operativer Cashflow
+E247 = -Zinsaufwand * (1 - Steuersatz)
+E248 = Zinsertrag nach Steuern            (bei Starbucks auf 0 gesetzt)
+E249 = -Veraenderung der Kasse
+E250 = SUMME(E246:E249)
+E251 = Investitions-Cashflow
+E252 = Anpassung Finanzanlagen            (bei Starbucks 0)
+E253 = SUMME(E250:E252)
+```
+
+**Warum wird der Zinsaufwand zurueckaddiert?** [Valuation!L247] Der Zahlungsstrom soll
+*allen* Kapitalgebern zustehen -- auch den Glaeubigern. Zinsen sind aber bereits an die
+Glaeubiger geflossen und im operativen Cashflow abgezogen. Sie muessen deshalb
+rueckgaengig gemacht werden. Nach Steuern, weil das tax shield real ist.
+
+**Der Rueckweg zum Eigenkapital** [Valuation!E260-E263]:
+```
+Wert des Eigenkapitals = Gesamtunternehmenswert
+                         - Wert des Fremdkapitals
+                         - Wert der Vorzugsaktien
+                         + Wert der Finanzanlagen
+```
+
+FSAP zur Bewertung der Schulden [Valuation!L260]:
+
+> "Value should be market value, if known, or fair value if disclosed. If not, use book
+> value."
+
+Fuer eine API-basierte Umsetzung ist der Buchwert der praktikable Weg.
+
+---
+
+## 8.3 Der Fortfuehrungswert
+
+> Fundstelle: [Valuation!E78, E108, E163, E222, E258]
+
+Das ist der wichtigste einzelne Rechenschritt des ganzen Kapitels -- und der, bei dem
+die meisten Fehler passieren.
+
+### Das Problem
+
+Prognostiziert wurden fuenf Jahre. Ein Unternehmen existiert aber laenger. Der Wert
+nach Jahr 5 muss in einer einzigen Zahl zusammengefasst werden.
+
+### Die Formel
+
+FSAP verwendet die Gordon-Wachstumsformel [Valuation!L78]:
+
+> "Year +6 dividends are treated as a perpetuity with growth using the long-run growth
+> rate assumption, discounted to present value at the equity cost of capital."
+
+```
+Fortfuehrungswert = Zahlungsstrom(Year +6) / (Diskontsatz - Langfristiges Wachstum)
+                    x Abzinsungsfaktor(Year +5)
+```
+
+Formel im Blatt [Valuation!E78]: `= J73 / ($F$36 - $F$29) * $I$75`
+
+Starbucks, Dividendenmodell [Valuation!E78]: `81.112,20 Mio.`
+
+### Die drei Fallstricke
+
+**Fallstrick 1: Der Abzinsungsfaktor von Jahr 5, nicht Jahr 6.**
+Die Formel `Zahlung / (r - g)` liefert bereits einen Wert **zum Zeitpunkt Jahr 5** --
+ein Jahr vor der ersten Zahlung der Rente. Deshalb wird mit `I75` (Faktor Jahr 5)
+multipliziert, nicht mit einem Faktor fuer Jahr 6. Wer hier Jahr 6 verwendet, zinst
+doppelt ab.
+
+**Fallstrick 2: Wachstum muss kleiner sein als der Diskontsatz.**
+Ist `g >= r`, wird der Nenner null oder negativ und das Ergebnis unsinnig. Bei
+Starbucks: `0,072 - 0,03 = 0,042`. Diese Bedingung muss in der Implementierung
+geprueft werden.
+
+**Fallstrick 3: Die Wachstumsannahme muss zu Schritt 1 passen.**
+FSAP prueft das ausdruecklich [Valuation!A30, L29]:
+
+> "This growth rate must agree with the long run growth rate used to forecast Year +6
+> and Beyond in the Forecasts spreadsheet."
+
+Die 3 % aus Schritt 1 und die 3 % hier sind derselbe Parameter. Werden sie
+unterschiedlich gesetzt, ist das Ergebnis intern widerspruechlich.
+
+### Wie dominant der Fortfuehrungswert ist
+
+Starbucks, Dividendenmodell [Valuation!E77-E79]:
+```
+Barwert Jahre 1-5      =  13.636,05  ( 14,4 %)
+Fortfuehrungswert      =  81.112,20  ( 85,6 %)
+-----------------------------------------------
+Summe                  =  94.748,25  (100,0 %)
+```
+
+**Mehr als 85 % des gesamten Unternehmenswerts stecken im Fortfuehrungswert.** Das ist
+kein Ausreisser, sondern typisch. Die praktische Konsequenz: Die detaillierte
+Fuenfjahresprognose aus den Schritten 1-7 bestimmt nur ein Siebtel des Ergebnisses. Die
+beiden Parameter `r` und `g` bestimmen den Rest.
+
+Wer das Modell kritisch liest, prueft zuerst diese beiden Zahlen -- nicht die
+Umsatzprognose.
+
+---
+
+## 8.4 Abzinsung
+
+> Fundstelle: [Valuation!E75, E105, E160, E219, E255]
+
+```
+Abzinsungsfaktor(Jahr n) = 1 / (1 + Diskontsatz)^n
+Barwert                  = Zahlung(Jahr n) x Abzinsungsfaktor(Jahr n)
+```
+
+Formel im Blatt [Valuation!E75]: `= 1 / (1 + $F$36)^E67`
+
+Bei 7,2 % Eigenkapitalkosten:
+```
+Jahr 1: 1 / 1,072^1 = 0,9328
+Jahr 2: 1 / 1,072^2 = 0,8701
+Jahr 3: 1 / 1,072^3 = 0,8117
+Jahr 4: 1 / 1,072^4 = 0,7572
+Jahr 5: 1 / 1,072^5 = 0,7063
+```
+
+**Welcher Diskontsatz zu welchem Modell:**
+
+| Modell | Diskontsatz | Blattzelle |
+|---|---|---|
+| 1 Dividenden | Eigenkapitalkosten | `F36` [Valuation!E75] |
+| 2 FCF to Equity | Eigenkapitalkosten | `F36` [Valuation!E105] |
+| 3 Residual Income | Eigenkapitalkosten | `F36` [Valuation!E160] |
+| 4 Market-to-Book | Eigenkapitalkosten | `F36` [Valuation!E219] |
+| 5 FCF All Debt and Equity | **WACC** | `F59` [Valuation!E255] |
+
+Die Regel dahinter: Der Diskontsatz muss zur Anspruchsgruppe passen. Fliesst der
+Zahlungsstrom nur an Aktionaere, gelten Eigenkapitalkosten. Fliesst er an alle
+Kapitalgeber, gilt der WACC.
+
+---
+
+## 8.5 Die Mitteljahres-Korrektur
+
+> Fundstelle: [Valuation!E80, E110, E167, E226, E264]
+
+```
+Korrekturfaktor = 1 + Diskontsatz / 2
+```
+
+Formel im Blatt [Valuation!E80]: `= (1 + $F$36/2)`
+
+Starbucks: `1 + 0,072/2 = 1,036` -- der Gesamtwert steigt also um 3,6 %.
+
+FSAP begruendet [Valuation!L80]:
+
+> "The present value factors discount from the end of each year to the present, whereas
+> dividends, cash flows, and earnings are generated throughout the year. This adjustment
+> computes the present value so that dividends, cash flows, and earnings are discounted
+> from the mid-point of each year."
+
+Uebersetzt: Die Standard-Abzinsung tut so, als kaeme das ganze Jahresgeld am
+31. Dezember. Tatsaechlich faellt es ueber das Jahr verteilt an, im Schnitt zur
+Jahresmitte. Ohne Korrektur wird ein halbes Jahr zu viel abgezinst.
+
+**Hinweis:** `(1 + r/2)` ist eine Naeherung fuer den exakten Wert `(1 + r)^0,5`. Bei
+7,2 % stehen 1,0360 gegen 1,0354 -- der Unterschied ist vernachlaessigbar. FSAP
+verwendet die einfache Variante.
+
+---
+
+## 8.6 Wert je Aktie
+
+> Fundstelle: [Valuation!E82-E83, E112-E113, E169-E170, E230-E231, E266-E267]
+
+```
+Wert je Aktie = Gesamtwert des Eigenkapitals / Anzahl ausstehender Aktien
+```
+
+Starbucks, Dividendenmodell [Valuation!E81-E83]:
+```
+Gesamtwert    = 98.159,19 Mio.
+Aktien        =  1.485,1 Mio.
+Wert je Aktie = 98.159,19 / 1.485,1 = 66,10 USD
+```
+
+---
+
+## 8.7 Die Kaufentscheidung
+
+> Fundstelle: [Valuation!E85-E86, L86]
+
+Hier laeuft alles zusammen:
+
+```
+Prozentuale Abweichung = Wert je Aktie / Boersenkurs - 1
+```
+
+Formel im Blatt [Valuation!E86]: `= E83 / E85 - 1`
+
+Starbucks:
+```
+Wert je Aktie          = 66,10 USD
+Boersenkurs            = 56,84 USD
+Prozentuale Abweichung = 66,10 / 56,84 - 1 = +16,28 %
+```
+
+**Die Entscheidungsregel** nennt FSAP explizit [Valuation!L86]:
+
+> "(Value/price)-1: positive number indicates underpricing."
+
+| Ergebnis | Bedeutung | Entscheidung |
+|---|---|---|
+| **positiv** | Wert ueber Kurs -- unterbewertet | **Kaufen** |
+| **negativ** | Wert unter Kurs -- ueberbewertet | **Verkaufen** |
+| **nahe null** | fair bewertet | Halten |
+
+Fuer Starbucks: **+16,3 % -> Kaufsignal.**
+
+**Was FSAP nicht vorgibt:** eine Mindestschwelle. Ob +2 % schon ein Kaufsignal ist oder
+erst +20 %, bleibt offen. Angesichts der Sensitivitaet aus Abschnitt 8.3 waere es
+unsauber, kleine Abweichungen als Signal zu werten -- sie liegen innerhalb der
+Modellungenauigkeit. Eine Sicherheitsmarge ist daher zu empfehlen; ihre Hoehe ist eine
+Nutzerentscheidung.
+
+---
+
+## 8.8 Die Kontrollen von FSAP
+
+### Kontrolle 1: Alle Modelle muessen uebereinstimmen
+
+> Fundstelle: [Valuation!A8-A15, F9-F13]
+
+FSAP stellt die fuenf Ergebnisse an den Anfang des Blattes [Valuation!A14-A15]:
+
+> "Check: All Estimated Value per Share amounts should be the same, with the possible
+> exception of the share value from the Free Cash Flow for All Debt and Equity model."
+
+Die tatsaechlichen Werte im Starbucks-Blatt [Valuation!F9-F13]:
+
+| Modell | Wert je Aktie |
+|---|---|
+| Dividendenmodell | 66,0960151720624 |
+| Free Cash Flow to Equity | 66,0960151720624 |
+| Residual Income | 66,0960151720625 |
+| Residual Income Market-to-Book | 66,0960151720625 |
+| FCF All Debt and Equity | **65,9537593298281** |
+
+Die ersten vier stimmen bis zur 12. Nachkommastelle ueberein. Das ist kein Zufall,
+sondern eine mathematische Notwendigkeit: Bei konsistenten Prognosen und eingehaltener
+clean surplus relation sind die Modelle algebraisch aequivalent.
+
+**Das macht die Uebereinstimmung zum besten verfuegbaren Test der Implementierung.**
+Weichen die vier Modelle voneinander ab, liegt ein Fehler in den Prognosen aus den
+Schritten 1-7 -- nicht in der Bewertung.
+
+### Kontrolle 2: Warum Modell 5 abweichen darf
+
+FSAP erklaert die Abweichung [Valuation!L267]:
+
+> "The first-iteration estimate of share value using this approach frequently differs
+> slightly from the other share value estimates. Several iterations can be required to
+> adjust the weights of debt and equity used to compute WACC to agree with the value of
+> common equity implied by this valuation model."
+
+Der Grund ist eine **zweite Zirkularitaet** -- nach der aus Schritt 6:
+
+```
+WACC braucht Marktwert des Eigenkapitals als Gewicht
+  -> Marktwert wird aber erst durch das Modell berechnet
+  -> das Modell braucht den WACC
+```
+
+Im Starbucks-Blatt wird der WACC mit dem **Boersenkurs** (56,84 USD) gewichtet. Das
+Modell selbst kommt aber auf 66,10 USD. Waere der berechnete Wert als Gewicht
+eingesetzt worden, stiege der Eigenkapitalanteil, der WACC naeherte sich den
+Eigenkapitalkosten -- und der Wert konvergierte gegen die anderen Modelle.
+
+Die Abweichung betraegt hier `65,95 vs. 66,10 = -0,22 %` und ist damit unerheblich. Bei
+stark verschuldeten Firmen faellt sie deutlich groesser aus.
+
+**Praktische Konsequenz:** Modell 5 ist das aufwaendigste und das einzige mit
+Iterationsbedarf. Fuer eine erste Implementierung sind Modell 1 und 3 die bessere Wahl.
+
+### Kontrolle 3: Sensitivitaetsanalyse
+
+> Fundstelle: [Valuation!A181-J198]
+
+FSAP legt eine Matrix an: Diskontsaetze von 6 % bis 12 % (Zeilen) gegen langfristige
+Wachstumsraten von 0 % bis 5 % (Spalten) [Valuation!B185-J198].
+
+Auszug (Wert je Aktie in USD):
+
+| r \ g | 0 % | 2 % | 3 % | 4 % | 5 % |
+|---|---|---|---|---|---|
+| 6,0 % | 52,05 | 72,57 | 93,09 | 134,12 | 257,23 |
+| 7,0 % | 44,30 | 57,72 | 69,47 | 89,04 | 128,18 |
+| **7,2 %** | 43,01 | 55,44 | **66,10** | 83,41 | 116,46 |
+| 8,0 % | 38,51 | 47,85 | 55,32 | 66,53 | 85,21 |
+| 10,0 % | 30,45 | 35,56 | 39,21 | 44,07 | 50,89 |
+| 12,0 % | 25,13 | 28,24 | 30,31 | 32,90 | 36,23 |
+
+Was diese Tabelle zeigt:
+
+- **Die Spannweite ist enorm:** von 25,13 bis 257,23 USD -- Faktor 10, bei identischen
+  Prognosen aus den Schritten 1-7.
+- **Bei niedrigen Diskontsaetzen explodiert die Empfindlichkeit.** In der Zeile 6 % ist
+  der Sprung von 4 % auf 5 % Wachstum ein Plus von 92 % (134 -> 257 USD). Der Grund ist
+  der Nenner `r - g`, der gegen null geht.
+- **Der Boersenkurs von 56,84 USD** liegt etwa im Feld r = 8 %, g = 3 %. Der Markt
+  bewertet Starbucks also ungefaehr so, als verlange er 8 % Rendite bei 3 % Wachstum.
+
+Diese letzte Beobachtung ist analytisch wertvoll: Statt zu fragen "ist die Aktie
+billig?", laesst sich fragen "welche Annahmen rechtfertigen den aktuellen Kurs, und
+sind die plausibel?".
+
+---
+
+## 8.9 Zusammenfassung der Rechenkette
+
+| Schritt | Formel | Blattzelle |
+|---|---|---|
+| Eigenkapitalkosten | `rf + Beta x MRP` | `F36` |
+| Fremdkapitalkosten n. St. | `Zins x (1 - Steuersatz)` | `F42` |
+| WACC | `w_EK x r_EK + w_FK x r_FK` | `F59` |
+| Zahlungsstrom | modellabhaengig | `E73/E103/E158/E217/E253` |
+| Abzinsungsfaktor | `1 / (1+r)^n` | `E75` |
+| Barwert Jahre 1-5 | `SUMME(Zahlung x Faktor)` | `E77` |
+| Fortfuehrungswert | `Zahlung(+6) / (r-g) x Faktor(+5)` | `E78` |
+| Mitteljahres-Korrektur | `x (1 + r/2)` | `E80` |
+| Wert je Aktie | `Gesamtwert / Aktienanzahl` | `E83` |
+| **Kaufentscheidung** | **`Wert / Kurs - 1`** | **`E86`** |
+
+## 8.10 Was in Python zu bauen ist
+
+**Input aus den Schritten 1-7:**
+- Dividenden, Aktienrueckkaeufe, Veraenderung gezeichnetes Kapital (Schritt 5)
+- Operativer Cashflow, Investitions-Cashflow, Kassenveraenderung (Schritt 7)
+- Gesamtergebnis je Jahr (Schritt 5)
+- Buchwert des Eigenkapitals je Jahr (Schritt 6)
+- Zinsaufwand, Steuersatz (Schritt 4 und 5)
+- Year-+6-Werte fuer den Fortfuehrungswert
+
+**Input aus den APIs:**
+- `FMP.get_profile()` -> `beta`
+- `FMP.get_quote()` -> `price`
+- `FMP.get_shares_float()` -> `outstandingShares`
+- `FMP.get_treasury_rates()` -> risikofreier Zins
+- `FMP.get_balance_sheet()` -> `totalDebt`
+
+**Nicht aus APIs verfuegbar:** Marktrisikopraemie und langfristige Wachstumsrate. Beide
+sind Setzungen.
+
+**Rechenlogik:**
+1. Kapitalkosten berechnen (CAPM, nach-Steuer-Fremdkapitalkosten, WACC)
+2. Pruefen: `g < r` -- sonst Abbruch
+3. Je Modell den Zahlungsstrom fuer Year +1 bis +6 ableiten
+4. Abzinsungsfaktoren fuer Jahre 1-5 berechnen
+5. Barwerte der Jahre 1-5 summieren
+6. Fortfuehrungswert aus Year +6 berechnen und abzinsen
+7. Bei Residual Income: Anfangsbuchwert addieren
+8. Bei Modell 5: Schulden abziehen, Finanzanlagen addieren
+9. Mitteljahres-Korrektur anwenden
+10. Durch Aktienanzahl teilen
+11. Modelle gegeneinander pruefen (Kontrolle 1)
+12. Mit Boersenkurs vergleichen -> Entscheidung
+
+**Vom Nutzer zu entscheiden:**
+- **Welche Modelle implementieren?** Alle fuenf, oder nur eines? Empfehlung: Modell 1
+  und 3, weil sie ohne Iteration auskommen und sich gegenseitig pruefen.
+- Marktrisikopraemie: welcher Wert?
+- Langfristige Wachstumsrate: fest, oder aus Schritt 1 uebernehmen?
+- Mitteljahres-Korrektur anwenden? Naeherung `(1+r/2)` oder exakt `(1+r)^0,5`?
+- Toleranz fuer Kontrolle 1 (Uebereinstimmung der Modelle)?
+- Modell 5 iterativ loesen oder erste Iteration akzeptieren?
+- **Schwelle fuer das Kaufsignal:** ab welcher prozentualen Abweichung wird gekauft?
+- Verhalten bei `g >= r`: Fehler werfen oder Wachstumsrate begrenzen?
+- Klassen- oder Funktionsstruktur, Datenstrukturen, Rueckgabetypen
+
+## 8.11 Abweichungen zwischen Excel und geplanter Implementierung
+
+| # | FSAP-Excel | Implementierung | Fundstelle |
+|---|---|---|---|
+| 13 | Beta, risikofreier Zins, Marktrisikopraemie sind manuelle Analysteneingaben | Beta und Zins aus FMP; Marktrisikopraemie bleibt Setzung | [Valuation!F33-F35, L7] |
+| 14 | Steuersatz als negative Zahl (FSAP-Vorzeichenkonvention) | positiver Steuersatz, Formel `Zins x (1 - s)` | [Valuation!F41-F42] |
+| 15 | Marktwert der Schulden, falls bekannt | Buchwert -- von FSAP als Rueckfalloption genannt | [Valuation!L260] |
+| 16 | WACC-Gewichte iterativ anpassen (Modell 5) | erste Iteration, oder Modell 5 weglassen | [Valuation!L267] |
+| 17 | Zinsertrag nach Steuern manuell zu setzen (bei SBUX = 0) | aus Schritt 4 ableiten oder 0 setzen | [Valuation!E248, L248] |
+
+Die Nummerierung setzt die Tabelle aus Kapitel 7 fort.
