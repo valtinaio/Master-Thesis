@@ -61,7 +61,7 @@ If additional code seems necessary, stop and ask the user first. State:
 2. Why it is necessary for the requested task
 3. Always include the option "tell me your own solution"
 
-Then wait for the user's decision. Do not implement a fix on your own initiative.
+Then wait for the user's decision. Do not implement a fix on your own initiative. Additional code or changing existing code is necessary if the new code breaks existing or future processes.
 
 ## When you hit a blocking problem
 If something must be solved before the requested task is possible:
