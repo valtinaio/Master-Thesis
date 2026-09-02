@@ -52,6 +52,7 @@ Drei Markierungen kommen in dieser Datei vor:
 | **[ALLGEMEIN]** | Die Regel, die das PDF selbst als allgemein gueltig formuliert. Das ist die Regel, die implementiert wird. |
 | **[SBUX-SPEZIFISCH]** | Eine Annahme, die nur fuer Starbucks gilt (Filialzahlen, Guthabenkarten, 53. Woche, konkrete Prozentsaetze). Wird **nicht** generisch implementiert. Fundstelle ist genannt. |
 | **[ABWEICHUNG]** | Hier weicht die geplante Implementierung bewusst vom PDF ab, weil FMP/SEC die noetigen Daten nicht liefern. Die PDF-Variante ist jeweils zitiert, damit die Abweichung in der Thesis begruendbar ist. |
+| **[LLM-LOESBAR]** | Eine Abweichung, bei der die fehlende Groesse **keine fehlende Zahl, sondern ein fehlendes Urteil** ist. Ein LLM, das den Jahresabschluss liest, kann dieses Urteil bilden. Steht immer direkt bei der betroffenen [ABWEICHUNG] und nennt Aufgabe, Idealdaten und Rueckfall. |
 
 ---
 
@@ -158,6 +159,77 @@ Daraus folgt der grundlegende Unterschied zwischen PDF und Implementierung:
 Jede **[ABWEICHUNG]** in dieser Datei ist eine Auspraegung dieses einen Unterschieds.
 Fuer die Thesis laesst sich das als eine einzige, begruendete Designentscheidung
 formulieren -- nicht als Sammlung von Einzelkompromissen.
+
+---
+
+## Zwei Arten von Abweichung: fehlende Zahl vs. fehlendes Urteil
+
+Die Abweichungen sind nicht alle gleich. Sieht man genau hin, zerfallen sie in zwei
+Gruppen, und nur eine davon ist wirklich ein Datenproblem.
+
+**Gruppe 1 -- fehlende Zahl.** Das PDF benutzt eine Groesse, die in *keinem*
+Jahresabschluss steht: Filialzahlen, Umsatz pro Filiale, Mietaufwand je Filiale, die
+Faelligkeitstermine einzelner Anleihen, die Aufteilung des Umsatzes auf Segmente. Wer
+den Abschluss liest, findet diese Zahlen dort nicht. Ein LLM auch nicht -- es koennte
+sie nur erfinden. Diese Abweichungen bleiben Abweichungen.
+
+**Gruppe 2 -- fehlendes Urteil.** Hier fehlt keine Zahl, sondern eine *Entscheidung*.
+Die Zahlen liegen vollstaendig im Abschluss; das PDF laesst einen Menschen daraus
+etwas ableiten:
+
+- Welche Quote wird fortgeschrieben -- die des letzten Jahres, ein Durchschnitt, oder
+  ein erkennbarer Trend?
+- Ist ein Ausreisserjahr ein Ausreisser oder der neue Normalzustand?
+- Welcher Bilanzposten eignet sich als Ausgleichsposten fuer *diese* Firma?
+- Ist die Fortschreibung einer Kennzahl hier ueberhaupt zulaessig, oder schwankt sie
+  zu stark?
+
+Genau das sind Aufgaben, die ein LLM uebernehmen kann: Es bekommt die historischen
+Werte aus dem Abschluss, urteilt darueber und liefert **eine Zahl plus eine
+schriftliche Begruendung**. Solche Stellen sind mit **[LLM-LOESBAR]** gekennzeichnet.
+
+### Warum ein LLM und nicht einfach eine Formel?
+
+Eine Formel muss sich fuer *alle* Firmen fuer denselben Weg entscheiden -- z. B.
+"immer den Dreijahresdurchschnitt". Das ist bei einer stabilen Firma richtig und bei
+einer Firma mit einem Sondereffekt im mittleren Jahr falsch. Das LLM darf pro Firma
+unterschiedlich entscheiden, so wie der Analyst im PDF es tut. Der Preis dafuer ist,
+dass die Entscheidung nicht mehr reproduzierbar-deterministisch ist -- deshalb gilt:
+
+> **Jede [LLM-LOESBAR]-Stelle hat einen deterministischen Rueckfall.** Faellt der
+> LLM-Aufruf aus, liefert er einen unplausiblen Wert oder fehlt die Datenbasis, greift
+> die einfache Regel, die ohnehin schon in dieser Datei beschrieben ist. Das LLM
+> *verbessert* die Annahme, es ist nie die einzige Quelle dafuer.
+
+### Was das LLM ausgibt
+
+Einheitlich fuer alle [LLM-LOESBAR]-Stellen, damit nur **ein** Prompt-Muster und
+**ein** Pydantic-Modell noetig sind (DRY):
+
+| Feld | Inhalt |
+|---|---|
+| `wert` | die gesetzte Annahme (Quote, Wachstumsrate, Tage, Steuersatz, ...) |
+| `begruendung` | ein bis zwei Saetze, warum genau dieser Wert |
+| `konfidenz` | hoch / mittel / niedrig -- bei "niedrig" wird der Rueckfall verwendet |
+
+Die `begruendung` ist fuer die Thesis wertvoll: Sie macht die Prognose erklaerbar und
+ist genau das, was das PDF als Fliesstext des Analysten liefert.
+
+### Was das LLM idealerweise braucht
+
+Bei jeder [LLM-LOESBAR]-Stelle steht unter **"Idealer Input"**, welche Angaben das
+LLM haben muesste, um so gut zu urteilen wie der Analyst im PDF. Das ist bewusst als
+*Wunschliste* formuliert und noch nicht als Umsetzungsplan -- welche dieser Angaben
+FMP und SEC tatsaechlich liefern, ist getrennt davon zu pruefen. Ein Muster wiederholt
+sich in fast allen Faellen:
+
+1. die betroffene Kennzahl als **Zeitreihe** ueber alle verfuegbaren Jahre
+2. die **Bezugsgroesse** derselben Jahre (meist der Umsatz), damit Quoten bildbar sind
+3. **Branche und Groesse** der Firma als Kontext
+4. wo vorhanden: **erlaeuternder Text** des Geschaeftsberichts (MD&A, Anhang)
+
+Punkt 4 ist der einzige, der ueber die reinen Zahlen hinausgeht -- und zugleich der,
+der aus einigen Gruppe-1-Faellen Gruppe-2-Faelle machen wuerde.
 
 ---
 ---
@@ -300,6 +372,31 @@ Umsatz(+n) = Umsatz(+n-1) x (1 + g)
 Umsatz(+6) = Umsatz(+5) x (1 + 0,03)
 ```
 
+### [LLM-LOESBAR] Die Wahl der Wachstumsrate
+
+Die Zahlen fehlen hier nicht -- die Umsatzreihe steht vollstaendig im Abschluss.
+Was fehlt, ist das Urteil darueber. Die CAGR ueber den gesamten Zeitraum ist nur
+*eine* moegliche Lesart, und der Abschnitt "Interpretation" unten nennt selbst den
+Fall, in dem sie in die Irre fuehrt (Raten +40 %, -20 %, +30 %).
+
+**Aufgabe fuer das LLM:** aus der historischen Umsatzreihe die Wachstumsrate `g` fuer
+Year +1 bis +5 setzen und begruenden. Es darf dabei
+
+- ein erkennbares Ausreisserjahr ausschliessen und das begruenden,
+- einen fallenden Trend fortschreiben statt eine Durchschnittsrate zu verwenden
+  (das PDF tut genau das bei Starbucks: sinkende Raten ueber die Jahre),
+- bei zu starker Schwankung `konfidenz = niedrig` melden.
+
+**Idealer Input:** Umsatz je Jahr fuer alle verfuegbaren Jahre (je mehr, desto besser);
+die daraus berechneten Einzeljahresraten und die CAGR; Branche der Firma. Ideal
+zusaetzlich, aber nicht aus Zahlen ableitbar: der Ausblicksteil des Geschaeftsberichts.
+
+**Rueckfall:** die CAGR-Fortschreibung wie oben beschrieben.
+
+Die langfristige Rate fuer Year +6 bleibt eine feste Annahme (3 %) und wird **nicht**
+vom LLM gesetzt -- sie ist eine gesamtwirtschaftliche Groesse, keine Eigenschaft der
+Firma [PDF S. 12, Fussnote 7].
+
 ## Interpretation: was die Zahlen bedeuten
 
 - **Hohe, stabile Wachstumsrate** (z. B. 10-15 %): Firma in der Wachstumsphase. Die
@@ -330,8 +427,14 @@ wertlos. Die Streuung der Einzeljahresraten sollte deshalb immer mitbetrachtet w
 
 **Output:** Umsatzprognose fuer 6 Jahre.
 
+**Zusaetzlich, wenn die Wachstumsrate per LLM gesetzt wird** (siehe [LLM-LOESBAR]
+oben): Das LLM liefert `wert`, `begruendung` und `konfidenz`; die Fortschreibung selbst
+bleibt unveraendert. Bei fehlender oder niedrig-konfidenter Antwort greift die CAGR.
+
 **Vom Nutzer zu entscheiden, bevor Code entsteht:**
 - Klasse oder Funktion? Bei Klasse: welche Attribute?
+- Wird die Wachstumsrate deterministisch (CAGR) oder per LLM gesetzt -- oder beides
+  mit Rueckfall?
 - Welche Datenstruktur fuer die Zeitreihen (Liste, dict, DataFrame)?
 - Anzahl historischer Jahre als Parameter oder fest?
 - Langfristige Wachstumsrate (3 %) als Parameter oder fest?
@@ -439,6 +542,18 @@ Quote      = Wareneinsatz(t) / Umsatz(t)
 Prognose   = Umsatz(prognostiziert) x Quote
 ```
 
+**[LLM-LOESBAR]** Der *getrennte* Mietaufwand bleibt unerreichbar -- er steht in keinem
+Abschluss. Die **Hoehe der Quote** ist dagegen ein Urteil: Das PDF haelt sie nicht
+konstant, sondern schreibt sie fallend fort (34,0 % -> 33,2 %), weil die historische
+Reihe faellt [PDF S. 13]. Genau diese Reihe steht im Abschluss.
+
+- **Aufgabe:** je Prognosejahr eine Wareneinsatzquote setzen -- konstant, oder mit
+  einem aus der Historie belegten Trend.
+- **Idealer Input:** Wareneinsatz und Umsatz je Jahr fuer alle verfuegbaren Jahre;
+  daraus die Quotenreihe. Ideal zusaetzlich: Hinweise des Geschaeftsberichts auf
+  Rohstoffpreise oder Preiserhoehungen.
+- **Rueckfall:** letzte historische Quote konstant fortschreiben.
+
 ### Filialbetriebskosten und sonstige betriebliche Aufwendungen
 
 **[SBUX-SPEZIFISCH]** Filialbetriebskosten werden im PDF nicht am Gesamtumsatz
@@ -451,6 +566,15 @@ Foodservice-Geschaeft gemessen (13,2 %, fortgeschrieben mit 13,0 %) [PDF S. 15].
 
 **[ABWEICHUNG]** Diese Bezugsgroessen setzen die Segmentaufteilung voraus. Ohne sie
 wird der Gesamtumsatz als Bezug verwendet -- die allgemeine Regel [PDF S. 12].
+
+**[LLM-LOESBAR]** Die *Bezugsgroesse* bleibt der Gesamtumsatz -- die Segmentaufteilung
+ist eine fehlende Zahl. Die **Quote darauf** ist wieder ein Urteil, wie beim
+Wareneinsatz: konstant oder mit belegtem Trend.
+
+- **Aufgabe:** Quote je Prognosejahr fuer die uebrigen betrieblichen Aufwandsposten.
+- **Idealer Input:** die jeweilige Aufwandszeile und der Umsatz je Jahr ueber alle
+  verfuegbaren Jahre.
+- **Rueckfall:** letzte historische Quote konstant.
 
 ### Sachanlagen und Abschreibungen
 
@@ -536,6 +660,30 @@ Umsatz verwendet -- die Common-Size-Regel [PDF S. 12] angewandt auf
 Investitionsquote = Investitionen(t) / Umsatz(t)
 Prognose          = Umsatz(prognostiziert) x Investitionsquote
 ```
+
+**[LLM-LOESBAR]** Diese Stelle ist die interessanteste in Schritt 2. Das PDF setzt die
+Investitionen nicht als feste Quote an, sondern *steigend* (1.400 -> 2.400 Mio.), und
+begruendet das mit dem **Alter des Filialbestands** [PDF S. 15-16] -- das klingt nach
+MD&A-Wissen, ist aber zu einem grossen Teil aus dem Abschluss ablesbar:
+
+```
+Anlagenalter (Indikator) = Kumulierte Abschreibungen / Sachanlagen zu Anschaffungskosten
+```
+
+Ein hoher Wert bedeutet: der Bestand ist weitgehend abgeschrieben, Ersatzinvestitionen
+stehen an. Diese beiden Groessen stehen in der Bilanz bzw. im Anlagenspiegel.
+
+- **Aufgabe:** Investitionsquote je Prognosejahr setzen -- konstant oder steigend --
+  und begruenden.
+- **Idealer Input:** Investitionen, Umsatz, Sachanlagen brutto, kumulierte
+  Abschreibungen und Abschreibungsaufwand je Jahr ueber alle verfuegbaren Jahre; die
+  geschaetzte Nutzungsdauer aus der Formel oben. Ideal zusaetzlich: die
+  Investitionsankuendigung aus dem MD&A.
+- **Rueckfall:** durchschnittliche historische Investitionsquote, konstant.
+
+Wichtig: Das LLM setzt hier **nur die Quote**. Die schichtweise Abschreibungsrechnung
+bleibt vollstaendig deterministisch -- sie ist reine Arithmetik und darf nicht an ein
+LLM abgegeben werden.
 
 Die Nutzungsdauer-Schaetzung und die schichtweise Abschreibungsrechnung bleiben
 dagegen unveraendert wie im PDF -- die dafuer noetigen Daten (Sachanlagen brutto,
@@ -691,6 +839,20 @@ Prognose = (Bezugsgroesse(prognostiziert) / 365) x Umschlagsdauer in Tagen
 > substantially different future growth rates in revenues and the forecasted account,
 > or if the turnover rate varies unpredictably over time."
 
+**[LLM-LOESBAR] Technikwahl und Umschlagsdauer.** Dieses Zitat ist woertlich eine
+Urteilsaufgabe: Es verlangt zu pruefen, ob eine Kennzahl "unvorhersehbar schwankt".
+Das laesst sich nur beurteilen, wenn man die Reihe ansieht -- und die steht im
+Abschluss. Dasselbe gilt fuer die Frage, welche der vier Techniken je Posten passt und
+welche Umschlagsdauer angesetzt wird (letztes Jahr, Durchschnitt, gerundet oder exakt
+-- das PDF rundet 30,8 auf 30 Tage [PDF S. 23], ohne die Rundung zu begruenden).
+
+- **Aufgabe:** je Bilanzposten die Technik (A-D) und den zugehoerigen Parameter
+  (Umschlagsdauer in Tagen, Quote oder Wachstumsrate) setzen.
+- **Idealer Input:** der Bilanzposten und seine Bezugsgroesse je Jahr ueber alle
+  verfuegbaren Jahre; die daraus berechnete Umschlagsdauer je Jahr; Branche.
+- **Rueckfall:** Technik D mit dem Durchschnitt der historischen Umschlagsdauern; wo
+  keine sinnvolle Bezugsgroesse existiert, Technik A mit der Umsatzwachstumsrate.
+
 ## Das Saegezahn-Problem
 
 **[ALLGEMEIN]** Das PDF beschreibt einen wichtigen Fallstrick [PDF S. 22]. Wenn die
@@ -788,6 +950,10 @@ umsetzbar; die Umschlagsdauer bleibt der Weg.
 
 **[ABWEICHUNG]** Ohne Filialdaten: Technik A mit der Umsatzwachstumsrate.
 
+**[LLM-LOESBAR]** Ob dieser Posten eher mit dem Umsatz mitwaechst (Technik A) oder
+sich stabiler als Quote verhaelt (Technik B), zeigt die historische Reihe. Aufgabe,
+Input und Rueckfall wie im Abschnitt "Technikwahl und Umschlagsdauer" oben.
+
 ### Latente Steuern
 
 **[SBUX-SPEZIFISCH]** Das PDF nennt seine eigene Annahme ausdruecklich willkuerlich
@@ -804,6 +970,17 @@ das PDF verzichtet bewusst auf eine tiefere Behandlung [PDF S. 29-30].
 **[ABWEICHUNG]** Empfehlung fuer die Implementierung: konstant halten. Das ist die
 neutralste Annahme und vermeidet eine willkuerliche Setzung.
 
+**[LLM-LOESBAR]** Hier gibt das PDF selbst zu, dass seine Annahme "somewhat arbitrary"
+ist -- es ist also gar keine Datenfrage, sondern ausdruecklich ein Urteil. Wenn die
+historische Reihe der latenten Steuern einen klaren Auf- oder Abbau zeigt, kann das
+LLM diesen Trend fortschreiben statt konstant zu halten.
+
+- **Aufgabe:** jaehrliche Veraenderungsrate der latenten Steuern setzen (0 % ist ein
+  zulaessiges Ergebnis).
+- **Idealer Input:** latente Steueransprueche und -schulden je Jahr ueber alle
+  verfuegbaren Jahre. Ideal zusaetzlich: die Steuerangabe im Anhang.
+- **Rueckfall:** konstant halten.
+
 ### Langfristige Finanzanlagen, Geschaefts- und Firmenwert, immaterielle Vermoegenswerte
 
 **[ALLGEMEIN]** Technik A mit einer festen Wachstumsrate. Das PDF begruendet dies
@@ -819,6 +996,21 @@ und immaterielle Vermoegenswerte) [PDF S. 30-31].
 
 **[ALLGEMEIN]** Ebenfalls die Annahme: keine kuenftigen Wertminderungen
 [PDF S. 31].
+
+**[LLM-LOESBAR]** Die konkreten Raten (3 % / 5 %) sind bei Starbucks gesetzt, nicht
+berechnet. Aus der Historie dieser Posten laesst sich aber ablesen, ob die Firma
+regelmaessig zukauft (Goodwill waechst stetig), einmalig zugekauft hat (ein Sprung in
+einem Jahr) oder gar nicht akquiriert (Goodwill konstant). Nur der erste Fall
+rechtfertigt eine positive Wachstumsrate.
+
+- **Aufgabe:** Wachstumsrate je Posten (Goodwill, immaterielle Vermoegenswerte,
+  langfristige Finanzanlagen) setzen.
+- **Idealer Input:** die drei Posten je Jahr ueber alle verfuegbaren Jahre.
+- **Rueckfall:** konstant halten (0 % Wachstum) -- das entspricht der PDF-Annahme
+  "keine unangekuendigten Akquisitionen" am striktesten.
+
+Die Annahme "keine kuenftigen Wertminderungen" bleibt fest und wird **nicht** vom LLM
+gesetzt -- eine prognostizierte Wertminderung waere reine Spekulation.
 
 ### Verbindlichkeiten aus Lieferungen und Leistungen
 
@@ -967,6 +1159,21 @@ Fremdkapitalquote = Fremdkapital(t) / Bilanzsumme(t)
 Prognose          = Bilanzsumme(prognostiziert) x Fremdkapitalquote
 ```
 
+**[LLM-LOESBAR]** Das *Faelligkeitsprofil* bleibt unerreichbar -- fehlende Zahl. Die
+**Zielverschuldungsquote** ist dagegen ablesbar: Steigt die Quote historisch, baut die
+Firma Verschuldung auf; ist sie stabil, verfolgt sie offenbar eine Zielstruktur.
+
+- **Aufgabe:** Fremdkapitalquote je Prognosejahr setzen.
+- **Idealer Input:** kurz- und langfristiges Fremdkapital, Bilanzsumme und
+  Eigenkapital je Jahr ueber alle verfuegbaren Jahre; die daraus berechnete
+  Quotenreihe. Ideal zusaetzlich: die Faelligkeitstabelle aus dem Anhang.
+- **Rueckfall:** letzte historische Quote konstant.
+
+**[LLM-LOESBAR] Zusatzpruefung.** Das LLM sollte melden, wenn die Fortschreibung zu
+einer unplausiblen Kapitalstruktur fuehrt (z. B. negatives Eigenkapital oder eine
+Verschuldung, die den Zinsaufwand ueber das Betriebsergebnis treibt). Das ist genau
+die Plausibilitaetskontrolle, die im PDF der Analyst leistet.
+
 ## Rechenschritt 4.3: Zinsaufwand
 
 **[ALLGEMEIN]** Der Zinsaufwand wird ueber einen gewichteten Durchschnittszinssatz
@@ -1000,6 +1207,20 @@ Zinsaufwand         = Durchschn. Schulden(prognostiziert) x Effektiver Zinssatz
 Das ist rechnerisch aequivalent, nur die Herleitung des Zinssatzes unterscheidet sich:
 das PDF leitet ihn aus den Vertragsdaten ab, die Implementierung aus dem
 tatsaechlich gezahlten Zins.
+
+**[LLM-LOESBAR]** Offen bleibt, *welcher* effektive Zinssatz genommen wird: der des
+letzten Jahres oder ein Mehrjahresdurchschnitt. Bei einer Firma, die im letzten Jahr
+eine grosse Anleihe zu abweichendem Kupon begeben hat, ist der letzte Wert
+irrefuehrend -- erkennbar an einem Sprung in der Reihe.
+
+- **Aufgabe:** effektiven Zinssatz fuer die Prognosejahre setzen.
+- **Idealer Input:** Zinsaufwand und Schuldenstand je Jahr ueber alle verfuegbaren
+  Jahre; die daraus berechnete Zinssatzreihe. Ideal zusaetzlich: das aktuelle
+  Marktzinsniveau und die Anleihetabelle aus dem Anhang.
+- **Rueckfall:** Durchschnitt der historischen effektiven Zinssaetze.
+
+Dasselbe gilt spiegelbildlich fuer die Verzinsung der Finanzanlagen in
+Rechenschritt 4.4.
 
 ## Rechenschritt 4.4: Zinsertrag
 
@@ -1128,6 +1349,21 @@ selbst angekuendigt [PDF S. 43].
 aufeinanderfolgenden Jahren -- ist ein Mehrjahresdurchschnitt stabiler als der letzte
 Wert.
 
+**[LLM-LOESBAR]** Der Durchschnitt ist nur die sichere Notloesung. Die eigentliche
+Frage -- ist 29,3 % ein einmaliger Sondereffekt oder das neue Niveau? -- ist ein
+Urteil ueber die Zeitreihe, und die Zeitreihe steht im Abschluss. Genau dieses Urteil
+faellt der Analyst im PDF, wenn er 34,0 % ansetzt: Er verwirft den letzten Wert
+bewusst.
+
+- **Aufgabe:** effektiven Steuersatz fuer die Prognosejahre setzen; ein einzelner
+  Ausreisser darf ausgeschlossen werden, wenn das begruendet wird.
+- **Idealer Input:** Steueraufwand und Vorsteuerergebnis je Jahr ueber alle
+  verfuegbaren Jahre; die daraus berechnete Steuersatzreihe; der gesetzliche
+  Steuersatz des Sitzlandes als Obergrenzen-Anhalt. Ideal zusaetzlich: die
+  Ueberleitungsrechnung gesetzlich -> effektiv aus dem Anhang, die genau erklaert,
+  woher die Abweichung kommt.
+- **Rueckfall:** Mehrjahresdurchschnitt des effektiven Steuersatzes.
+
 ## Rechenschritt 5.3: Nettogewinn
 
 ```
@@ -1157,6 +1393,22 @@ Quote           = 1.188,0 / 2.794,3 = 42,5 %
 
 **[SBUX-SPEZIFISCH]** Die Annahme von 1.500 Mio. pro Jahr beruht auf der
 Rueckkaufhistorie und einer Programmankuendigung [PDF S. 44-45].
+
+**[LLM-LOESBAR] Ausschuettungspolitik (gilt fuer 5.4 und 5.5).** Die
+Programmankuendigung ist eine fehlende Zahl -- die **Rueckkaufhistorie** dagegen steht
+in der Kapitalflussrechnung, ebenso die gezahlten Dividenden. Aus beidem laesst sich
+das Ausschuettungsverhalten der Firma ablesen: zahlt sie ueberhaupt Dividende, ist die
+Quote stabil oder steigend, kauft sie regelmaessig oder nur gelegentlich zurueck.
+
+- **Aufgabe:** Ausschuettungsquote und jaehrlichen Rueckkaufbetrag setzen.
+- **Idealer Input:** Nettogewinn, gezahlte Dividenden und Aktienrueckkaeufe je Jahr
+  ueber alle verfuegbaren Jahre; Aktienanzahl je Jahr. Ideal zusaetzlich: die
+  angekuendigte Dividende je Aktie und das laufende Rueckkaufprogramm.
+- **Rueckfall:** durchschnittliche historische Ausschuettungsquote; Rueckkaeufe in
+  Hoehe des historischen Durchschnitts.
+
+Wenn in Schritt 6 die Rueckkaeufe als Ausgleichsposten dienen, ist dieser Betrag nur
+der **Startwert**, der dort angepasst wird -- genau wie im PDF-Zitat unten.
 
 **[ALLGEMEIN] Zwei buchhalterische Behandlungen** [PDF S. 44]:
 - Ueber ein **Treasury-Stock-Konto** (negativer Eigenkapitalposten) -- der Normalfall
@@ -1288,6 +1540,28 @@ Starbucks nachweislich bereit und faehig ist, Kapital an Aktionaere auszuschuett
 Ausgleichsposten. Zwei Gruende: Es ist die vom PDF genannte Option fuer wachsende
 Firmen [PDF S. 46], und es funktioniert in beide Richtungen (Aufnahme *und* Tilgung),
 waehrend Rueckkaeufe bei einer Finanzierungsluecke nicht negativ werden koennen.
+
+**[LLM-LOESBAR]** Dies ist die deutlichste LLM-Stelle des ganzen Verfahrens. Das PDF
+formuliert die Wahl ausdruecklich als **Einordnung der Firma** -- Start-up,
+wachsende Firma, reife cash-starke Firma -- und liefert die Faustregel gleich mit
+(siehe Tabelle oben). Eine solche Einordnung ist genau das, was sich aus einem
+Jahresabschluss lesen laesst: Liquiditaetspolster, Verschuldungsgrad, Umsatzwachstum,
+Profitabilitaet, Ausschuettungshistorie.
+
+Der obige Vorschlag "immer Fremdkapital" waere die Faustregel fuer *eine* der drei
+Kategorien, angewandt auf alle Firmen.
+
+- **Aufgabe:** einen der vier Ausgleichsposten waehlen und die Wahl mit der
+  Einordnung der Firma begruenden.
+- **Idealer Input:** Kasse und kurzfristige Finanzanlagen, Fremd- und Eigenkapital,
+  Umsatzwachstum, Nettomarge, operativer Cashflow, Dividenden und Rueckkaeufe -- je
+  Jahr ueber alle verfuegbaren Jahre.
+- **Rueckfall:** Fremdkapital, aus den zwei oben genannten Gruenden.
+
+**Grenze:** Das LLM waehlt nur den *Posten*. Die Ausgleichsrechnung selbst -- Differenz
+bilden, Veraenderung anpassen, auf null bringen -- bleibt vollstaendig deterministisch
+und wird nie an ein LLM abgegeben. Ebenso muss die Wahl fuer alle Prognosejahre
+dieselbe bleiben, sonst laesst sich die Veraenderungslogik unten nicht anwenden.
 
 ## Der Rechenschritt
 
@@ -1579,25 +1853,64 @@ Kapitalflussrechnungen werden **nicht** verwendet [PDF S. 50].
 
 ## Alle [ABWEICHUNG]-Stellen im Ueberblick
 
-| # | Schritt | PDF-Variante | Implementierte Variante | Fundstelle |
-|---|---|---|---|---|
-| 1 | 1 | Segmentweise Prognose ueber Filialzahlen und Umsatz pro Filiale | CAGR-Fortschreibung des Gesamtumsatzes (der vom PDF selbst genannte Fallback) | [PDF S. 2-12] |
-| 2 | 1 | 53-Wochen-Korrektur (Faktor 1,019) | entfaellt -- Starbucks-Kalenderbesonderheit | [PDF S. 11-12] |
-| 3 | 2 | Miete getrennt ueber Miete pro Filiale x Filialanzahl | Common-Size auf den Gesamtposten Wareneinsatz | [PDF S. 13-14] |
-| 4 | 2 | Filialbetriebskosten am Umsatz firmeneigener Filialen | Common-Size am Gesamtumsatz | [PDF S. 14-15] |
-| 5 | 2 | Investitionen aus MD&A-Ankuendigung | Common-Size vom Umsatz | [PDF S. 15-16] |
-| 6 | 3 | Forderungen am Segmentumsatz (Lizenz/CPG/Foodservice) | Umschlagsdauer am Gesamtumsatz | [PDF S. 28] |
-| 7 | 3 | Rechnungsabgrenzung ueber Filialanzahl | Wachstum mit Umsatzwachstumsrate | [PDF S. 29] |
-| 8 | 3 | Latente Steuern -100 % / -10 % p. a. (PDF nennt es selbst "arbitrary") | konstant halten | [PDF S. 30] |
-| 9 | 4 | Fremdkapital ueber Faelligkeitsprofil aus Note 9 | Prozent der Bilanzsumme (vom PDF als Alternative genannt) | [PDF S. 36-37] |
-| 10 | 4 | Gewichteter Zinssatz aus Einzelanleihen | Effektiver Zinssatz aus der Historie | [PDF S. 38-39] |
-| 11 | 5 | Steuersatz 34 % aus MD&A-Ankuendigung | Effektiver Steuersatz aus der Historie | [PDF S. 43] |
-| 12 | 6 | Aktienrueckkaeufe als Ausgleichsposten | Fremdkapital (Empfehlung, Entscheidung offen) | [PDF S. 47] |
+Die Spalte **LLM** sagt, ob die Abweichung ein fehlendes *Urteil* ist, das ein LLM aus
+dem Jahresabschluss bilden kann (siehe "Zwei Arten von Abweichung" am Anfang der
+Datei):
+
+- **ja** -- vollstaendig durch ein LLM setzbar
+- **teilweise** -- die fehlende Zahl bleibt fehlend, aber der zugehoerige Parameter
+  (Quote, Rate, Tage) ist ein Urteil und damit LLM-setzbar
+- **nein** -- die Groesse steht in keinem Abschluss, ein LLM koennte sie nur erfinden
+
+| # | Schritt | PDF-Variante | Implementierte Variante | LLM | Fundstelle |
+|---|---|---|---|---|---|
+| 1 | 1 | Segmentweise Prognose ueber Filialzahlen und Umsatz pro Filiale | CAGR-Fortschreibung des Gesamtumsatzes (der vom PDF selbst genannte Fallback) | teilweise -- Segmentierung nein, Wahl der Wachstumsrate ja | [PDF S. 2-12] |
+| 2 | 1 | 53-Wochen-Korrektur (Faktor 1,019) | entfaellt -- Starbucks-Kalenderbesonderheit | nein -- Kalenderfrage, keine Abschlussgroesse | [PDF S. 11-12] |
+| 3 | 2 | Miete getrennt ueber Miete pro Filiale x Filialanzahl | Common-Size auf den Gesamtposten Wareneinsatz | teilweise -- Trennung nein, Hoehe der Quote ja | [PDF S. 13-14] |
+| 4 | 2 | Filialbetriebskosten am Umsatz firmeneigener Filialen | Common-Size am Gesamtumsatz | teilweise -- Bezugsgroesse nein, Quote ja | [PDF S. 14-15] |
+| 5 | 2 | Investitionen aus MD&A-Ankuendigung | Common-Size vom Umsatz | **ja** -- Anlagenalter ist aus Bilanz und Anlagenspiegel ablesbar | [PDF S. 15-16] |
+| 6 | 3 | Forderungen am Segmentumsatz (Lizenz/CPG/Foodservice) | Umschlagsdauer am Gesamtumsatz | teilweise -- Bezugsgroesse nein, Umschlagsdauer ja | [PDF S. 28] |
+| 7 | 3 | Rechnungsabgrenzung ueber Filialanzahl | Wachstum mit Umsatzwachstumsrate | teilweise -- Filialbezug nein, Technikwahl ja | [PDF S. 29] |
+| 8 | 3 | Latente Steuern -100 % / -10 % p. a. (PDF nennt es selbst "arbitrary") | konstant halten | **ja** -- PDF nennt seine Annahme selbst willkuerlich | [PDF S. 30] |
+| 8b | 3 | Wachstumsraten Goodwill / immaterielle / Finanzanlagen (3 % / 5 %, gesetzt) | konstant oder Parameter | **ja** -- Akquisitionsmuster ist aus der Historie ablesbar | [PDF S. 30-31] |
+| 9 | 4 | Fremdkapital ueber Faelligkeitsprofil aus Note 9 | Prozent der Bilanzsumme (vom PDF als Alternative genannt) | teilweise -- Faelligkeiten nein, Zielquote ja | [PDF S. 36-37] |
+| 10 | 4 | Gewichteter Zinssatz aus Einzelanleihen | Effektiver Zinssatz aus der Historie | **ja** -- welcher Jahreswert/Durchschnitt gilt, ist ein Urteil | [PDF S. 38-39] |
+| 11 | 5 | Steuersatz 34 % aus MD&A-Ankuendigung | Effektiver Steuersatz aus der Historie | **ja** -- Ausreisser vs. neues Niveau ist ein Urteil | [PDF S. 43] |
+| 11b | 5 | Dividende je Aktie und Rueckkaufprogramm aus Ankuendigung | historische Ausschuettungsquote | **ja** -- Ausschuettungshistorie steht in der Kapitalflussrechnung | [PDF S. 44-45] |
+| 12 | 6 | Aktienrueckkaeufe als Ausgleichsposten | Fremdkapital (Empfehlung, Entscheidung offen) | **ja** -- PDF formuliert die Wahl selbst als Einordnung der Firma | [PDF S. 46-47] |
 
 Die Stellen 1, 3-7, 9-11 haben alle dieselbe Ursache: Das PDF nutzt MD&A-Fliesstext,
 Anhangsangaben und Segmentberichte, die ueber FMP und SEC-XBRL nicht maschinell
 verfuegbar sind. In allen diesen Faellen wird die Regel verwendet, die das PDF selbst
 als allgemeine Alternative formuliert.
+
+**Das Bild, das die LLM-Spalte zeigt:** Nur zwei Zeilen sind ein echtes "nein". Bei
+allen anderen bleibt zwar die *Struktur* der PDF-Rechnung unerreichbar (Segmente,
+Filialen, Anleihen), aber der **Parameter**, mit dem die Ersatzrechnung arbeitet, ist
+in jedem einzelnen Fall ein Urteil ueber eine Zeitreihe aus dem Jahresabschluss. Genau
+dort setzt das LLM an.
+
+Fuer die Thesis laesst sich das so formulieren: Die Implementierung ersetzt nicht die
+*Daten* des Analysten -- die bleiben teilweise unerreichbar -- sondern sein
+**Urteilsvermoegen**, und zwar an genau den Stellen, an denen das Urteil auf Zahlen
+beruht, die maschinell vorliegen.
+
+## Was bewusst NICHT an ein LLM gegeben wird
+
+Diese Abgrenzung ist so wichtig wie die Liste oben:
+
+| Bereich | Grund |
+|---|---|
+| Jede Arithmetik der 7 Schritte | Reine Rechnung. Ein LLM wuerde nur Fehler hinzufuegen. |
+| Die schichtweise Abschreibungsrechnung | Deterministisch, im PDF vollstaendig spezifiziert. |
+| Die Ausgleichsrechnung in Schritt 6 | Muss exakt auf null gehen. |
+| Die Kapitalflussrechnung in Schritt 7 | Reine Differenzenbildung aus Bilanz und GuV. |
+| Die Bewertungsmodelle in Kapitel 8 | Feste Formeln, muessen untereinander uebereinstimmen. |
+| Langfristige Wachstumsrate (3 %) | Gesamtwirtschaftliche Groesse, keine Firmeneigenschaft. Zudem muss sie in Schritt 1 und im Fortfuehrungswert identisch sein. |
+| Marktrisikopraemie | Marktgroesse, keine Abschlussgroesse. |
+| Kuenftige Wertminderungen | Waere reine Spekulation. |
+
+Kurz: **Das LLM setzt Annahmen, es rechnet nicht.**
 
 ## Reihenfolgeabhaengigkeiten
 
@@ -2371,12 +2684,22 @@ sind Setzungen.
 
 ## 8.11 Abweichungen zwischen Excel und geplanter Implementierung
 
-| # | FSAP-Excel | Implementierung | Fundstelle |
-|---|---|---|---|
-| 13 | Beta, risikofreier Zins, Marktrisikopraemie sind manuelle Analysteneingaben | Beta und Zins aus FMP; Marktrisikopraemie bleibt Setzung | [Valuation!F33-F35, L7] |
-| 14 | Steuersatz als negative Zahl (FSAP-Vorzeichenkonvention) | positiver Steuersatz, Formel `Zins x (1 - s)` | [Valuation!F41-F42] |
-| 15 | Marktwert der Schulden, falls bekannt | Buchwert -- von FSAP als Rueckfalloption genannt | [Valuation!L260] |
-| 16 | WACC-Gewichte iterativ anpassen (Modell 5) | erste Iteration, oder Modell 5 weglassen | [Valuation!L267] |
-| 17 | Zinsertrag nach Steuern manuell zu setzen (bei SBUX = 0) | aus Schritt 4 ableiten oder 0 setzen | [Valuation!E248, L248] |
+| # | FSAP-Excel | Implementierung | LLM | Fundstelle |
+|---|---|---|---|---|
+| 13 | Beta, risikofreier Zins, Marktrisikopraemie sind manuelle Analysteneingaben | Beta und Zins aus FMP; Marktrisikopraemie bleibt Setzung | nein -- Marktgroessen, stehen in keinem Abschluss | [Valuation!F33-F35, L7] |
+| 14 | Steuersatz als negative Zahl (FSAP-Vorzeichenkonvention) | positiver Steuersatz, Formel `Zins x (1 - s)` | nein -- reine Vorzeichenkonvention | [Valuation!F41-F42] |
+| 15 | Marktwert der Schulden, falls bekannt | Buchwert -- von FSAP als Rueckfalloption genannt | nein -- Marktwert ist keine Abschlussgroesse | [Valuation!L260] |
+| 16 | WACC-Gewichte iterativ anpassen (Modell 5) | erste Iteration, oder Modell 5 weglassen | nein -- Rechenverfahren, deterministisch | [Valuation!L267] |
+| 17 | Zinsertrag nach Steuern manuell zu setzen (bei SBUX = 0) | aus Schritt 4 ableiten oder 0 setzen | nein -- folgt aus Schritt 4 | [Valuation!E248, L248] |
 
 Die Nummerierung setzt die Tabelle aus Kapitel 7 fort.
+
+**Kapitel 8 enthaelt keine [LLM-LOESBAR]-Stellen.** Der Grund ist systematisch: Die
+Bewertung rechnet nur noch mit den Prognosen aus den Schritten 1-7 und mit
+*Marktgroessen* (Beta, risikofreier Zins, Marktrisikopraemie, Marktwert der Schulden).
+Marktgroessen stehen in keinem Jahresabschluss -- ein LLM koennte sie nur erfinden. Die
+Modelle selbst sind feste Formeln, die laut FSAP zum selben Ergebnis fuehren muessen
+(Kontrolle 1); dort ist jede Freiheit ein Fehler.
+
+Alle LLM-gesetzten Annahmen liegen also **vor** der Bewertung, in den Schritten 1-6.
+Ihre Wirkung erreicht die Bewertung ueber die prognostizierten Abschluesse.
