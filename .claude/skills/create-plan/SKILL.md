@@ -16,3 +16,4 @@ The USER must create the plan, not you! If the user doesn't give you enough info
 
 # The level of technical detail the user must provide
 The user must provide very specific information. For example: if the user plans a new method for a class, the different arguments and the logic implementation (if, else, ...) must be completely defined by the user, so that you only implement exactly what the user told you, and not what you decided yourself.
+If the user already specified something specifically, don't ask again if the user is sure to do certain things - unless there is a reason why the user should overthing the decision.
