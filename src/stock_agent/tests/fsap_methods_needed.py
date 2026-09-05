@@ -3,6 +3,7 @@ This file tests all classes and methods needed
 for FSAP using fmp_api.py and sec_api.py based on AAPL.
 """
 from stock_agent.services.fmp_api import FMP
+from stock_agent.services.calculus import Calculus
 
 SAMPLE_STOCK = "AAPL"
 
@@ -15,3 +16,5 @@ aaple_revenue = aapl_income_statement.get_income_statement("FY", 5)[["date", "re
 print(aaple_revenue)
 
 # 2 Revenue Growth Rate
+aaple_revenue_gr = Calculus(aaple_revenue).get_growth_rate()
+print(aaple_revenue_gr)
