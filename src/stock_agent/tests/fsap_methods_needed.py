@@ -13,8 +13,8 @@ SYSTEM_PROMPT = "You are a professional stock analyst, searching for profitable 
 # Revenue last 5 years
 # ----------------------
 # 1 Revenue Time Series from raw data
-aapl_income_statement = FMP(SAMPLE_STOCK)
-aaple_revenue = aapl_income_statement.get_income_statement("FY", 6)[["date", "revenue"]]
+aapl_income_statement = FMP(SAMPLE_STOCK).get_income_statement("FY", 6)
+aaple_revenue = aapl_income_statement[["date", "revenue"]]
 print(aaple_revenue)
 
 # 2 Revenue Growth Rate
@@ -29,6 +29,23 @@ print(aaple_cagr)
 # 4 CAGR prediction for + 5 years plus year + 6 with long term growth rate
 aaple_cagr_pred = aaple_calculus.get_CAGR_prediction_plus_one("revenue", aaple_cagr.iloc[0, 1])
 print(aaple_cagr_pred)
+
+# ---------------------------
+# Extracting costs and Quota
+# ---------------------------
+aaple_costs = aapl_income_statement[["date",
+                                    "revenue",
+                                    "costOfRevenue",
+                                    "sellingGeneralAndAdministrativeExpenses",
+                                    "operatingExpenses",
+                                    "depreciationAndAmortization"]]
+print(aaple_costs)
+# Example: operatingExpenses Quota
+aaple_calculus_1 = Calculus(aaple_costs)
+aaple_calculus_1.get_cost_quota(["costOfRevenue",
+                                 "sellingGeneralAndAdministrativeExpenses",
+                                 "operatingExpenses",
+                                 "depreciationAndAmortization"])
 
 # ----------------------
 # LLM Calls

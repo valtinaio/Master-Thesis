@@ -80,3 +80,22 @@ class Calculus:
             raise ValueError(
                 f"The date-column or the column '{column}' is missing in your pd.DataFrame"
             )
+
+    def get_cost_quota(self, columns_costs: list):
+        """Calculate the common-size quota of several cost columns relative to revenue.
+        Returns a DataFrame with the date, all value columns and one quota per cost column."""
+
+        if (
+            "date" in self.data.columns
+            and "revenue" in self.data.columns
+            # all() is True only if every cost column of the list exists in the data.
+            and all(column in self.data.columns for column in columns_costs)
+        ):
+            df = self.data[["date", "revenue"] + columns_costs].copy()
+            for column_cost in columns_costs:
+                df[column_cost + "_quota"] = df[column_cost] / df["revenue"]
+            return df
+        else:
+            raise ValueError(
+                f"The date-column, the revenue-column or the columns '{columns_costs}' are missing in your pd.DataFrame"
+            )
