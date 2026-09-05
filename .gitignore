@@ -1,2 +1,6 @@
 .env
+.venv/
 __pycache__/
+*.egg-info/
+FSAP_7_Step_Forecasting_Framework_for_Starbucks_.pdf
+FSAP_Starbucks.xlsx

@@ -1,0 +1,15 @@
+[project]
+name = "stock_analysis_agent"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+    "pandas",
+    "requests",
+    "pathlib",
+    "typing",
+    "python-dotenv"
+]
+
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
