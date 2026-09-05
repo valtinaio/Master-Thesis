@@ -94,3 +94,6 @@ Everything — including technical details — must be defined by the user. Keep
 
 # Never read the .env file
 You are never allowed to read the .env file. If you must use it for a code-test, use it ONLY with load_dotenv. If you MUST read it, tell it to the user and ask him how to deal with it. Never read it without asking.
+
+# Length of your answers
+Try to be very specific, compact, structured and useful in your answers. Don't make the user read inutile text. Assume the user wants to know everything he/she needs to know to make informed decisions, but nothing more. 
