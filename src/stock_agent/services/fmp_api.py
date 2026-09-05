@@ -6,29 +6,10 @@ This is the primary data source; `sec_api.py` is only the fallback for data FMP 
 # ---------------------------
 # Imports
 # ---------------------------
-import os
-from pathlib import Path
-from typing import Literal
-
 import pandas as pd
 import requests
-from dotenv import load_dotenv
 
-# The .env file lives in the "codes" folder, which is the parent of the "services" folder.
-# Deriving the path from this file keeps the code working on Windows and macOS alike.
-ENV_PATH = Path(__file__).resolve().parent.parent / ".env"
-load_dotenv(ENV_PATH)
-
-# The FMP Starter plan provides five years of history, so five is the default everywhere.
-DEFAULT_LIMIT = 5
-
-# The type alias makes the allowed argument values visible in every method signature.
-Period = Literal["FY", "quarter"]
-
-
-class FMPError(Exception):
-    """Raised when an FMP request fails, naming the endpoint and the reason."""
-
+from stock_agent.config import FMP_API_KEY
 
 class FMP:
     """Imports stock data of one symbol from the FMP API; every method fetches on demand."""
@@ -37,7 +18,7 @@ class FMP:
         """Store the symbol, the API key and the endpoint URLs without performing any request."""
 
         self.symbol = str(symbol).upper()
-        self._api_key = os.getenv("FMP_API_KEY")
+        self._api_key = FMP_API_KEY
         self._endpoints = [
             "https://financialmodelingprep.com/stable/income-statement",
             "https://financialmodelingprep.com/stable/balance-sheet-statement",
