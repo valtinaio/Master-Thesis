@@ -4,8 +4,10 @@ for FSAP using fmp_api.py and sec_api.py based on AAPL.
 """
 from stock_agent.services.fmp_api import FMP
 from stock_agent.services.calculus import Calculus
+from stock_agent.services.llm_call import LLMCall
 
 SAMPLE_STOCK = "AAPL"
+SYSTEM_PROMPT = "You are a professional stock analyst, searching for profitable investment possibilities."
 
 # ----------------------
 # Revenue last 5 years
@@ -27,3 +29,11 @@ print(aaple_cagr)
 # 4 CAGR prediction for + 5 years plus year + 6 with long term growth rate
 aaple_cagr_pred = aaple_calculus.get_CAGR_prediction_plus_one("revenue", aaple_cagr.iloc[0, 1])
 print(aaple_cagr_pred)
+
+# ----------------------
+# LLM Calls
+# ----------------------
+bot = LLMCall("claude-haiku-4-5-20251001")
+bot_answer = bot.llm_call(["I am Valentin"], SYSTEM_PROMPT, "Wie gehts?")
+# Final answer
+bot_answer[1].text

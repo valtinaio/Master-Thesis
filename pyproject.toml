@@ -7,7 +7,9 @@ dependencies = [
     "requests",
     "pathlib",
     "typing",
-    "python-dotenv"
+    "python-dotenv",
+    "anthropic",
+    "typing"
 ]
 
 [build-system]
