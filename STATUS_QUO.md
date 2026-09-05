@@ -9,3 +9,4 @@ Die technischen Voraussetzungen für die CAGR-Umsatzprognose sind gebaut. Entspr
 Eventuell (Nach Paul Antwort) das LLM in der Definition der verwendeten Umsatz-Wachstumsraten einsetzen.
 
 # Jetzt weiter mit "Schritt 2: Betriebliche Aufwendungen prognostizieren"
+Dort weitermachen bei step_2.md mit Aufgabe zur Erstellung von FMP.get_balance_sheet().
