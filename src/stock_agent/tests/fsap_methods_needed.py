@@ -23,3 +23,7 @@ print(aaple_revenue_gr)
 # 3 CAGR over complete time period
 aaple_cagr = aaple_calculus.get_CAGR("revenue")
 print(aaple_cagr)
+
+# 4 CAGR prediction for + 5 years
+aaple_cagr_pred = aaple_calculus.get_CAGR_prediction("revenue", aaple_cagr.iloc[0, 1])
+print(aaple_cagr_pred)
