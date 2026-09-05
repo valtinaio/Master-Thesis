@@ -6,6 +6,7 @@ Service to perform calculations on financial data provided as a pandas DataFrame
 # Imports
 # ---------------------------
 import pandas as pd
+from stock_agent.config import LONGTERM_GROWTH_RATE
 
 
 class Calculus:
@@ -52,9 +53,10 @@ class Calculus:
                 f"The date-column or the column '{column}' is missing in your pd.DataFrame"
             )
 
-    def get_CAGR_prediction(self, column: str, CAGR: float):
-        """Project the given value column five years ahead with a constant CAGR.
-        Returns a DataFrame with the last observed year plus the five forecast years."""
+    def get_CAGR_prediction_plus_one(self, column: str, CAGR: float):
+        """Project the given value column five years ahead with a constant CAGR
+        plus one further year grown with the long-run rate.
+        Returns a DataFrame with the last observed year, five CAGR years and year +6."""
 
         if "date" in self.data.columns and column in self.data.columns:
             start_value = self.data[column].iloc[-1]
@@ -65,6 +67,9 @@ class Calculus:
             for year in range(1, 6):
                 dates.append(start_date + pd.DateOffset(years=year))
                 values.append(values[-1] * (1 + CAGR))
+            # Year +6 is the long-run state and grows with the economy, not with the firm's own CAGR.
+            dates.append(start_date + pd.DateOffset(years=6))
+            values.append(values[-1] * (1 + LONGTERM_GROWTH_RATE))
             return pd.DataFrame(
                 {
                     "date": dates,

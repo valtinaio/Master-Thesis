@@ -12,7 +12,7 @@ SAMPLE_STOCK = "AAPL"
 # ----------------------
 # 1 Revenue Time Series from raw data
 aapl_income_statement = FMP(SAMPLE_STOCK)
-aaple_revenue = aapl_income_statement.get_income_statement("FY", 5)[["date", "revenue"]]
+aaple_revenue = aapl_income_statement.get_income_statement("FY", 6)[["date", "revenue"]]
 print(aaple_revenue)
 
 # 2 Revenue Growth Rate
@@ -24,6 +24,6 @@ print(aaple_revenue_gr)
 aaple_cagr = aaple_calculus.get_CAGR("revenue")
 print(aaple_cagr)
 
-# 4 CAGR prediction for + 5 years
-aaple_cagr_pred = aaple_calculus.get_CAGR_prediction("revenue", aaple_cagr.iloc[0, 1])
+# 4 CAGR prediction for + 5 years plus year + 6 with long term growth rate
+aaple_cagr_pred = aaple_calculus.get_CAGR_prediction_plus_one("revenue", aaple_cagr.iloc[0, 1])
 print(aaple_cagr_pred)

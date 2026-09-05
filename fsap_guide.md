@@ -160,6 +160,69 @@ Jede **[ABWEICHUNG]** in dieser Datei ist eine Auspraegung dieses einen Untersch
 Fuer die Thesis laesst sich das als eine einzige, begruendete Designentscheidung
 formulieren -- nicht als Sammlung von Einzelkompromissen.
 
+### Wie viele historische Jahre gebraucht werden
+
+`FMP.get_income_statement(period="FY", limit=n)` liefert die letzten `n`
+Geschaeftsjahre; dasselbe gilt fuer Bilanz und Kapitalflussrechnung. Wie gross `n`
+sein muss, ergibt sich aus zwei Regeln:
+
+**Regel 1 -- Quoten kosten kein Jahr.** Eine Common-Size-Quote (Idee 1) bezieht zwei
+Groessen desselben Jahres aufeinander. Aus `n` Jahren entstehen `n` Quoten.
+
+```
+Quote(t) = Aufwand(t) / Umsatz(t)          ->  n Jahre = n Quoten
+```
+
+**Regel 2 -- Durchschnittsbestaende kosten ein Jahr.** Jede Umschlagsdauer (Idee 2)
+und jeder zinsbezogene Satz braucht den **Durchschnittsbestand**, und der braucht die
+Bilanz des Vorjahres:
+
+```
+Durchschnittsbestand(t) = (Bestand(t-1) + Bestand(t)) / 2
+```
+
+Das aelteste Jahr hat kein Vorjahr und liefert deshalb keine Kennzahl. Aus `n`
+Bilanzjahren entstehen nur `n-1` Umschlagsdauern. Dasselbe gilt fuer Wachstumsraten:
+`n` Umsatzjahre ergeben `n-1` Jahresraten und eine CAGR ueber `n-1` Perioden.
+
+**Was das PDF selbst zugrunde legt:** drei Geschaeftsjahre (2013, 2014, 2015)
+[PDF S. 3, Exhibit 10.2]. Daraus zieht es zwei Wachstumsraten (10,6 % und 16,5 %)
+und die CAGR ueber zwei Perioden (13,5 %) [PDF S. 2]. Die Umschlagsdauern rechnet es
+aus den Bilanzen 2014 und 2015 -- die Kasse etwa aus `(1.530,1 + 1.708,4) / 2`
+[PDF S. 23]. Drei Jahre sind damit das **Minimum**, das FSAP methodisch verlangt.
+
+**Der Bedarf je Rechenschritt:**
+
+| Schritt | Groesse | Formel braucht | Noetige Jahre fuer `k` Kennzahlwerte |
+|---|---|---|---|
+| 1 | Umsatzwachstum, CAGR | Umsatz(t-1) | `k + 1` |
+| 2 | Kostenquoten (Wareneinsatz, Filial-, Verwaltungsaufwand) | nur Jahr `t` | `k` |
+| 2 | Nutzungsdauer der Sachanlagen | durchschn. Sachanlagen brutto | `k + 1` |
+| 2 | Investitionsquote | nur Jahr `t` | `k` |
+| 2 | Rendite auf Beteiligungen | durchschn. Buchwert | `k + 1` |
+| 3 | Umschlagsdauern (Kasse, Forderungen, Vorraete, Verbindlichkeiten) | durchschn. Bestand | `k + 1` |
+| 3 | Wachstumsraten (Goodwill, immaterielle, Finanzanlagen) | Bestand(t-1) | `k + 1` |
+| 4 | Fremdkapitalquote | nur Jahr `t` | `k` |
+| 4 | Effektiver Zinssatz | durchschn. Schuldenstand | `k + 1` |
+| 4 | Rendite auf Finanzanlagen | durchschn. Finanzanlagen | `k + 1` |
+| 5 | Effektiver Steuersatz | nur Jahr `t` | `k` |
+| 5 | Ausschuettungsquote, Rueckkaufquote | nur Jahr `t` | `k` |
+
+Der teuerste Posten bestimmt das Ganze: ueberall dort, wo `k + 1` steht, wird ein Jahr
+mehr gebraucht, als am Ende an Kennzahlwerten herauskommt.
+
+**Die Festlegung fuer diese Implementierung:** abgerufen werden **6 Geschaeftsjahre**.
+Daraus entstehen 6 Quotenwerte und 5 Umschlagsdauern, Wachstums-, Zins- und
+Steuersatzwerte -- genug, um einen Trend von einem Ausreisser zu unterscheiden, und
+doppelt so viele Jahre wie im PDF. Da FMP diese sechs Jahre liefert, ist an keiner
+Stelle ein Behelf noetig: jede Kennzahl wird so gerechnet, wie das PDF sie rechnet.
+
+> **Untergrenze:** Faellt eine Zeitreihe kuerzer aus (junge Firma, Boersengang vor
+> weniger als 6 Jahren), sind **3 Jahre** das Minimum -- der Umfang, mit dem das PDF
+> selbst arbeitet. Darunter liefert jede Kennzahl, die einen Durchschnittsbestand
+> braucht, hoechstens einen einzigen Wert; ein Trend ist dann nicht mehr erkennbar und
+> die Prognose beruht auf einer einzigen Beobachtung.
+
 ---
 
 ## Zwei Arten von Abweichung: fehlende Zahl vs. fehlendes Urteil
@@ -415,8 +478,10 @@ wertlos. Die Streuung der Einzeljahresraten sollte deshalb immer mitbetrachtet w
 
 ## Was in Python zu bauen ist
 
-**Input:** Umsatzreihe (`revenue`) aus `FMP.get_income_statement()`, mindestens
-3 Jahre, besser 5.
+**Input:** Umsatzreihe (`revenue`) aus `FMP.get_income_statement()`, 6 Jahre
+(`limit=6`). Daraus entstehen 5 Jahresraten und eine CAGR ueber 5 Perioden -- ein
+Jahr geht fuer die Differenzbildung verloren (siehe "Wie viele historische Jahre
+gebraucht werden"). Untergrenze sind 3 Jahre.
 
 **Zu implementierende Rechenlogik:**
 1. Umsatzreihe aus den Rohdaten extrahieren, chronologisch sortieren
@@ -436,7 +501,7 @@ bleibt unveraendert. Bei fehlender oder niedrig-konfidenter Antwort greift die C
 - Wird die Wachstumsrate deterministisch (CAGR) oder per LLM gesetzt -- oder beides
   mit Rueckfall?
 - Welche Datenstruktur fuer die Zeitreihen (Liste, dict, DataFrame)?
-- Anzahl historischer Jahre als Parameter oder fest?
+- Anzahl historischer Jahre (6) als Parameter oder fest?
 - Langfristige Wachstumsrate (3 %) als Parameter oder fest?
 - Prognosehorizont (5+1 Jahre) als Parameter oder fest?
 - Umgang mit fehlenden Jahren in der Zeitreihe
@@ -761,6 +826,10 @@ Betriebsergebnis = Umsatz
 - `SEC.get_concept("PropertyPlantAndEquipmentGross")` -- Sachanlagen zu Anschaffungs-
   kosten; FMP liefert nur den Nettowert, die Nutzungsdauer-Formel braucht aber brutto
 
+**Noetige Jahre:** 6. Die Kostenquoten und die Investitionsquote entstehen aus je
+einem Jahr und ergeben 6 Werte. Die Nutzungsdauer und die Rendite auf Beteiligungen
+brauchen einen Durchschnittsbestand und ergeben deshalb nur 5 Werte.
+
 **Zu implementierende Rechenlogik:**
 1. Kostenquoten (Aufwand / Umsatz) je historischem Jahr berechnen
 2. Aufwandsposten als Umsatz x Quote fortschreiben
@@ -1072,6 +1141,11 @@ Umsatz -- ist uebertragbar und wird auf `otherCurrentLiabilities` angewandt.
 - Umsatzprognose aus Schritt 1
 - Wareneinsatzprognose aus Schritt 2
 
+**Noetige Jahre:** 6. Alle Umschlagsdauern brauchen den Durchschnittsbestand und
+damit die Vorjahresbilanz; aus 6 Bilanzjahren entstehen 5 Umschlagsdauern. Dasselbe
+gilt fuer die Wachstumsraten von Goodwill, immateriellen Vermoegenswerten und
+Finanzanlagen.
+
 **Zu implementierende Rechenlogik:**
 1. Umschlagsdauern aus der Historie berechnen (Kasse, Forderungen, Vorraete,
    Verbindlichkeiten)
@@ -1287,6 +1361,10 @@ vereinfachend auf null gesetzt, weil sie nur 0,03 % des Eigenkapitals ausmachen
 - `FMP.get_income_statement()` -- `interestExpense`, `interestIncome`
 - Bilanzsummenprognose aus Schritt 3
 
+**Noetige Jahre:** 6. Die Fremdkapitalquote entsteht aus je einem Jahr (6 Werte). Der
+effektive Zinssatz und die Rendite auf Finanzanlagen werden auf den durchschnittlichen
+Bestand gerechnet und ergeben 5 Werte.
+
 **Zu implementierende Rechenlogik:**
 1. Historische Fremdkapitalquote berechnen
 2. Fremdkapital ueber die Quote fortschreiben
@@ -1457,6 +1535,9 @@ Abschluesse nicht verknuepft.
 - `FMP.get_income_statement()` -- `incomeTaxExpense`, `incomeBeforeTax`, `netIncome`
 - `FMP.get_cash_flow()` -- `dividendsPaid`, `commonStockRepurchased`
 - Ergebnisse aus Schritt 2 und 4
+
+**Noetige Jahre:** 6. Steuersatz, Ausschuettungs- und Rueckkaufquote beziehen sich
+alle auf Groessen desselben Jahres; es entstehen 6 Werte, kein Jahr geht verloren.
 
 **Zu implementierende Rechenlogik:**
 1. Vorsteuerergebnis zusammensetzen
@@ -1634,6 +1715,8 @@ PDF-Variante und gegen die oben empfohlene; die Entscheidung liegt beim Nutzer.
 ## Was in Python zu bauen ist
 
 **Input:** Alle Prognosen aus den Schritten 1-5.
+
+**Noetige Jahre:** keine. Schritt 6 rechnet ausschliesslich auf den Prognosejahren.
 
 **Zu implementierende Rechenlogik:**
 1. Bilanzsumme, Schulden und Eigenkapital je Prognosejahr summieren
@@ -1818,6 +1901,10 @@ ganze Modell.
 
 **Input:** Die prognostizierte GuV und Bilanz aus den Schritten 1-6. Historische
 Kapitalflussrechnungen werden **nicht** verwendet [PDF S. 50].
+
+**Noetige Jahre:** eine einzige historische Bilanz -- das letzte Ist-Jahr. Es liefert
+den Anfangsbestand, gegen den die Veraenderungen des ersten Prognosejahres gerechnet
+werden. Aeltere Jahre werden hier nicht gebraucht.
 
 **Zu implementierende Rechenlogik:**
 1. Fuer jedes Prognosejahr die Veraenderung jedes Bilanzpostens berechnen
@@ -2110,6 +2197,11 @@ zu Marktwerten -- fast ausschliesslich eigenkapitalfinanziert ist.
 - Aktienanzahl: `FMP.get_shares_float()` -> `outstandingShares`
 - Fremdkapital: `FMP.get_balance_sheet()` -> `totalDebt`
 - Zinssatz und Steuersatz: aus Schritt 4 und 5
+
+**Noetige Jahre:** nur das letzte Ist-Jahr. Kurs, Aktienanzahl, Beta und Fremdkapital
+sind Stichtagsgroessen; Zinssatz und Steuersatz kommen fertig aus den Schritten 4
+und 5. Das Beta berechnet FMP intern aus Kurshistorie -- diese Historie wird nicht
+selbst abgerufen.
 
 **Rechenlogik:**
 1. Eigenkapitalkosten nach CAPM

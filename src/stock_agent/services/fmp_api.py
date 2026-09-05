@@ -57,5 +57,5 @@ class FMP:
 
 if __name__ == "__main__":
     fmp = FMP("AAPL")
-    df = fmp.get_income_statement(period="FY", limit=5)
+    df = fmp.get_income_statement(period="FY", limit=6)
     print(df)

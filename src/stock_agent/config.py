@@ -8,3 +8,4 @@ load_dotenv(ROOT / ".env")
 
 # Reading relevant keys
 FMP_API_KEY = os.environ["FMP_API_KEY"]
+LONGTERM_GROWTH_RATE = float(os.environ["LONGTERM_GROWTH_RATE"])
