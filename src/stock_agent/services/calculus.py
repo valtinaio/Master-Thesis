@@ -14,19 +14,40 @@ class Calculus:
     def __init__(self, data: pd.DataFrame):
         self.data = data
 
-    def get_growth_rate(self):
-        """Calculate the period-over-period growth rate of the single value column.
-        Returns a copy of the DataFrame with the growth rate appended as a new column."""
+    def get_growth_rate(self, column: str):
+        """Calculate the period-over-period growth rate of the given value column.
+        Returns a DataFrame with the date, the value column and its growth rate."""
 
-        if "date" in self.data.columns and len(self.data.columns) == 2:
-            df = self.data.copy()
-            # The one column that is not "date" holds the values to compare.
-            value_column = [column for column in df.columns if column != "date"][0]
+        if "date" in self.data.columns and column in self.data.columns:
+            df = self.data[["date", column]].copy()
             # shift(1) moves every value one row down, so each row can access its predecessor (t-1).
-            previous = df[value_column].shift(1)
-            df[value_column + "_growth_rate"] = (df[value_column] - previous) / previous
+            previous = df[column].shift(1)
+            df[column + "_growth_rate"] = (df[column] - previous) / previous
             return df
         else:
             raise ValueError(
-                "The date-column is missing or you have more than two columns in your pd.DataFrame"
+                f"The date-column or the column '{column}' is missing in your pd.DataFrame"
+            )
+
+    def get_CAGR(self, column: str):
+        """Calculate the compound annual growth rate (CAGR) of the given value column.
+        Returns a DataFrame with one row holding the date period and the CAGR."""
+
+        if "date" in self.data.columns and column in self.data.columns:
+            start_value = self.data[column].iloc[0]
+            end_value = self.data[column].iloc[-1]
+            start_date = self.data["date"].iloc[0]
+            end_date = self.data["date"].iloc[-1]
+            periods = len(self.data) - 1
+            # The CAGR is the constant growth rate that turns the start value into the end value.
+            cagr = (end_value / start_value) ** (1 / periods) - 1
+            return pd.DataFrame(
+                {
+                    "period": [f"{start_date} - {end_date}"],
+                    column + "_CAGR": [cagr],
+                }
+            )
+        else:
+            raise ValueError(
+                f"The date-column or the column '{column}' is missing in your pd.DataFrame"
             )

@@ -16,5 +16,10 @@ aaple_revenue = aapl_income_statement.get_income_statement("FY", 5)[["date", "re
 print(aaple_revenue)
 
 # 2 Revenue Growth Rate
-aaple_revenue_gr = Calculus(aaple_revenue).get_growth_rate()
+aaple_calculus = Calculus(aaple_revenue)
+aaple_revenue_gr = aaple_calculus.get_growth_rate("revenue")
 print(aaple_revenue_gr)
+
+# 3 CAGR over complete time period
+aaple_cagr = aaple_calculus.get_CAGR("revenue")
+print(aaple_cagr)
