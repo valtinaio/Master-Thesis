@@ -576,6 +576,32 @@ bleiben muss. Vier Faelle [PDF S. 12-13]:
 als ihr letzter Wert. Sinkt die Quote drei Jahre in Folge, ist die Fortschreibung des
 letzten Werts zu pessimistisch.
 
+**[ABWEICHUNG] Wie viele Aufwandsposten wir tatsaechlich fuehren.** Die folgenden
+Abschnitte beschreiben die vier Aufwandszeilen der Starbucks-GuV. Diese Gliederung ist
+unternehmensspezifisch und in FMP nicht vorhanden. Implementiert sind stattdessen
+**zwei Spalten**:
+
+```
+costOfRevenue        <- Wareneinsatz inkl. Mietkosten
+operatingExpenses    <- Filialbetriebskosten, sonstige, Verwaltung, F&E
+```
+
+Die allgemeine Common-Size-Regel [PDF S. 12] bleibt dabei unveraendert -- nur die
+Anzahl der Posten ist geringer. Das Betriebsergebnis ist identisch, weil die Summe
+dieselbe ist.
+
+**Empirisch belegt statt angenommen:** `Calculus.get_expenses_quota()` prueft je Jahr,
+ob `revenue - Summe(Spalten)` das gemeldete `operatingIncome` trifft. Fuer 16 geprüfte
+Firmen (AAPL, MSFT, TSLA, SBUX, KO, NKE, JPM, XOM, PFE, AMZN, GOOGL, META, NFLX, INTC,
+WMT, DIS) geht die Rechnung auf. Details in `step_2.md`, Teil 8.
+
+**Was dabei aufgegeben wird:** Gegenlaeufige Bewegungen innerhalb von
+`operatingExpenses` -- etwa steigende Forschungs- bei fallenden Verwaltungskosten --
+sieht das LLM nur noch als Saldo. Eine feinere Aufteilung waere in FMP moeglich
+(`researchAndDevelopmentExpenses` + `sellingGeneralAndAdministrativeExpenses` +
+`otherExpenses` summieren sich exakt zu `operatingExpenses`), verdoppelt aber die Zahl
+der LLM-Urteile ohne das Ergebnis zu aendern.
+
 ## Die einzelnen Aufwandsarten im PDF
 
 ### Wareneinsatz und Mietkosten
@@ -760,6 +786,9 @@ Abschreibungsaufwand) sind verfuegbar.
 zwischen 6,0 % und 6,3 %, fortgeschrieben mit 6,0 % [PDF S. 17-18, "Projecting General
 and Administrative Expenses"]. Diese Regel ist ohne Anpassung uebernehmbar.
 
+**[ABWEICHUNG]** Als eigener Posten wird der Verwaltungsaufwand nicht gefuehrt -- er
+steckt bei FMP in `operatingExpenses` und wird ueber dessen Quote mitprognostiziert.
+
 ### Ergebnis aus Beteiligungen
 
 **[ALLGEMEIN]** Zwei Wege werden genannt [PDF S. 18]:
@@ -804,6 +833,19 @@ Betriebsergebnis = Umsatz
                    - Verwaltungsaufwand
                    + Beteiligungsergebnis
 ```
+
+**[ABWEICHUNG]** Mit der Zwei-Spalten-Aufteilung lautet dieselbe Rechnung:
+
+```
+Betriebsergebnis = Umsatz - costOfRevenue - operatingExpenses + Beteiligungsergebnis
+```
+
+**Abschreibungen werden hier nicht abgezogen.** Bei FMP sind sie bereits in
+`costOfRevenue` und `operatingExpenses` enthalten; `depreciationAndAmortization` ist
+eine reine Zusatzangabe. Ein erneuter Abzug waere eine Doppelzaehlung -- bei Apple 2025
+haette das die operative Marge von 32,0 % auf 22,5 % gedrueckt. Die
+Abschreibungsprognose wird trotzdem gebraucht, aber fuer die Sachanlagen-Fortschreibung
+und Schritt 3, nicht fuer diese Summe.
 
 ## Interpretation
 

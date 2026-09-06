@@ -182,3 +182,34 @@ class Calculus:
                     f"but {len(self.data_predictions)} forecast years are needed"
                 )
             self.data_predictions[column + "_llm"] = quotas
+
+    def get_expenses_prediction(self):
+        """Predict the absolute expenses of the next six years from the LLM quotas
+        and the revenue forecast.
+        Adds one prediction column per LLM quota column to self.data_predictions."""
+
+        # Every column written by get_llm_quota() ends with '_quota_llm'.
+        columns_quota_llm = [
+            column
+            for column in self.data_predictions.columns
+            if column.endswith("_quota_llm")
+        ]
+        if not columns_quota_llm:
+            raise ValueError(
+                "self.data_predictions holds no LLM quota column. "
+                "You must predict the quotas with get_llm_quota() first"
+            )
+
+        if "revenue_CAGR_prediction" not in self.data_predictions.columns:
+            raise ValueError(
+                "self.data_predictions holds no column 'revenue_CAGR_prediction'. "
+                "You must predict the revenue with get_CAGR_prediction_plus_one('revenue') first"
+            )
+
+        for column_quota_llm in columns_quota_llm:
+            # removesuffix() cuts '_quota_llm' off, so only the original column name is left.
+            column = column_quota_llm.removesuffix("_quota_llm")
+            self.data_predictions[column + "_prediction"] = (
+                self.data_predictions[column_quota_llm]
+                * self.data_predictions["revenue_CAGR_prediction"]
+            )

@@ -60,10 +60,7 @@ aaple_calculus.llm_quota_response.quotas["operatingExpenses_quota"].reasoning
 aaple_calculus.llm_quota_response.quotas["operatingExpenses_quota"].confidence
 
 # ----------------------
-# LLM Calls
+# Expenses Prediction
 # ----------------------
-bot = LLMCall("claude-haiku-4-5-20251001")
-bot_answer = bot.llm_call(["I am Valentin"], SYSTEM_PROMPT, "Wie gehts?")
-# Final answer
-bot_answer[1].text
-
+aaple_calculus.get_expenses_prediction()
+aaple_calculus.data_predictions

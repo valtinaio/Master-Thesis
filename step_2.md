@@ -150,15 +150,31 @@ Schritt B auf der Prognose.
 
 **Baustein A — Quotenreihe aus der Historie. Existiert bereits.**
 
-`services/calculus.py` hat `Calculus.get_cost_quota(columns_costs: list)`. Die
+`services/calculus.py` hat `Calculus.get_expenses_quota(columns_costs: list)`. Die
 Methode rechnet genau `Aufwand(t) / Umsatz(t)` fuer jede uebergebene Spalte und
 haengt sie als `<spalte>_quota` an.
 
 | | |
 |---|---|
-| Eingang | DataFrame mit `date`, `revenue` und den Aufwandsspalten |
+| Eingang | DataFrame mit `date`, `revenue`, `operatingIncome` und den Aufwandsspalten |
 | Formel | `df[spalte] / df["revenue"]` |
 | Ausgang | derselbe DataFrame plus eine `_quota`-Spalte je Aufwandsposten |
+
+**Eingebauter Vollstaendigkeits-Check.** Vor der Rechnung prueft die Methode je Jahr:
+
+```
+revenue - Summe(gewaehlte Spalten) - operatingIncome  ->  relativ zum Umsatz
+```
+
+Liegt die Abweichung ueber `EXPENSES_TOLERANCE` (0,5 %), wirft sie eine Exception.
+Darunter druckt sie die Abweichung je Jahr. Damit ist die Spaltenauswahl **bewiesen**
+statt angenommen — der Doppelzaehlungs-Test aus Teil 5 steckt in der Methode selbst.
+
+Warum eine Toleranz und nicht exakt null: FMP ordnet nicht jede berichtete GuV-Zeile
+einer Spalte zu. Bei Tesla 2021 bleiben 27 Mio. (0,05 % vom Umsatz) uebrig, bei Intel
+2023 sind es 0,11 %. Diese Restbetraege existieren bei FMP in **keiner** Spalte, sind
+also durch keine Auswahl einfangbar. Die kleinste echte Doppelzaehlung liegt dagegen
+bei rund 9 % — dazwischen ist die Toleranz sicher angesiedelt.
 
 Hier ist **nichts neu zu bauen** — nur aufzurufen.
 
@@ -174,9 +190,10 @@ Prognosejahr nimmt und daraus den Aufwand je Prognosejahr macht.
 | Ausgang | ein Aufwandswert je Prognosejahr |
 | Ort | `services/calculus.py` — reine Arithmetik auf einer Zeitreihe, wie `get_growth_rate` und `get_CAGR` |
 
-Diese eine Methode deckt **alle vier Aufwandsposten der Gruppe A und zusaetzlich die
-Investitionen aus Gruppe B** ab. Sie wird also fuenfmal aufgerufen und nur einmal
-geschrieben — das ist die DRY-Stelle von Schritt 2.
+Diese eine Methode deckt **die Aufwandsposten der Gruppe A und zusaetzlich die
+Investitionen aus Gruppe B** ab. Bei der gewaehlten Zwei-Spalten-Aufteilung sind das
+drei Aufrufe (`costOfRevenue`, `operatingExpenses`, `capitalExpenditure`) bei nur
+einmal geschriebenem Code — das ist die DRY-Stelle von Schritt 2.
 
 **Wichtig fuer die Signatur:** Die Quote muss **je Jahr** uebergeben werden koennen,
 nicht als ein einzelner Wert. Sonst laesst sich der fallende Verlauf des PDFs
@@ -202,10 +219,13 @@ Gruppe B — Sachanlagen/AfA      (1 Block)       -> eigene Mechanik, der grosse
 Gruppe C — Sonderfaelle         (2 Positionen)  -> je eine kleine Extraregel
 ```
 
-**Gruppe A: Common-Size.** Betrifft Wareneinsatz, Filialbetriebskosten, sonstige
-betriebliche Aufwendungen und Verwaltungsaufwand. Alle vier laufen ueber exakt
-dieselbe Formel aus Teil 2. Kein Unterschied in der Rechenlogik — nur andere
-Eingangsspalten.
+**Gruppe A: Common-Size.** Im PDF sind das vier Posten: Wareneinsatz,
+Filialbetriebskosten, sonstige betriebliche Aufwendungen und Verwaltungsaufwand. Alle
+laufen ueber exakt dieselbe Formel aus Teil 2 — kein Unterschied in der Rechenlogik,
+nur andere Eingangsspalten.
+
+**Bei uns sind es zwei: `costOfRevenue` und `operatingExpenses`** (Begruendung unten
+und in Teil 8, Nr. 1).
 
 **Wichtige Abweichung gegenueber dem PDF:** Das PDF misst Filialbetriebskosten am
 *Umsatz der firmeneigenen Filialen* und sonstige Aufwendungen am *Lizenz-/CPG-Umsatz*.
@@ -250,10 +270,10 @@ Diese Gruppierung ist die **Bauanleitung fuer die Reihenfolge**, nicht selbst Co
 | B | eigene Mechanik | ja — der groesste Block, Teil 4 |
 | C | zwei kleine Extraregeln | ja — klein, Teil 4 Ende |
 
-Konkret fuer Gruppe A: **kein neuer Rechencode.** Es wird nur `get_cost_quota()` mit
-der Liste der Aufwandsspalten aufgerufen und danach der Fortschreibungs-Baustein je
-Spalte. Die einzige Arbeit ist, **welche FMP-Spalten** in diese Liste gehoeren — das
-ist offene Entscheidung Nr. 1 in Teil 8 und muss vor Stufe 1 geklaert sein.
+Konkret fuer Gruppe A: **kein neuer Rechencode.** Es wird nur `get_expenses_quota()`
+mit der Liste der Aufwandsspalten aufgerufen und danach der Fortschreibungs-Baustein je
+Spalte. Welche FMP-Spalten hineingehoeren, ist entschieden und empirisch belegt:
+`["costOfRevenue", "operatingExpenses"]` (Teil 8).
 
 Gruppe C ist erst am Ende dran (Stufe 4).
 
@@ -349,7 +369,7 @@ Das ist wieder Common-Size — angewandt auf `capitalExpenditure` aus dem Cash F
 `capitalExpenditure` statt einer Aufwandsspalte:
 
 ```
-get_cost_quota(["capitalExpenditure"])   ->  Quotenreihe
+get_expenses_quota(["capitalExpenditure"])   ->  Quotenreihe
 Fortschreibungs-Baustein                 ->  Investitionen je Prognosejahr
 ```
 
@@ -505,6 +525,8 @@ aufgenommen — das ist gleichbedeutend mit "auf null gesetzt".
 
 Das Ziel von Schritt 2. Reine Subtraktion:
 
+Im PDF:
+
 ```
 Betriebsergebnis = Umsatz
                    - Wareneinsatz (und Mietkosten)
@@ -514,6 +536,20 @@ Betriebsergebnis = Umsatz
                    - Verwaltungsaufwand
                    + Beteiligungsergebnis
 ```
+
+Bei uns, mit der FMP-Aufteilung:
+
+```
+Betriebsergebnis = Umsatz
+                   - costOfRevenue
+                   - operatingExpenses
+                   + Beteiligungsergebnis
+```
+
+**Abschreibungen tauchen hier nicht auf** — bei FMP stecken sie bereits in
+`costOfRevenue` und `operatingExpenses`. Sie erneut abzuziehen waere eine
+Doppelzaehlung. Die Abschreibungsprognose aus 4.3 wird trotzdem gebraucht, aber fuer
+die Sachanlagen-Fortschreibung (4.4) und Schritt 3, nicht fuer diese Summe.
 
 **Interpretation — was danach zu pruefen ist.** Operative Marge =
 Betriebsergebnis / Umsatz. Im PDF steigt sie fuer Starbucks von 18,8 % (2015) auf
@@ -540,17 +576,35 @@ Margenreihe als Kontrollgroesse.
 | Ausgang | Betriebsergebnis und operative Marge je Prognosejahr |
 | Ort | die Zusammenfuehrung gehoert in `sub_graphs/fsap.py` — dort laufen die Service-Ergebnisse zusammen (Architekturregel 3) |
 
-**Die Doppelzaehlungs-Falle — hier schlaegt sie zu.** Bei FMP enthaelt
-`operatingExpenses` je nach Anbieter bereits `sellingGeneralAndAdministrativeExpenses`
-und `depreciationAndAmortization`. Werden alle drei subtrahiert, ist das
-Betriebsergebnis zu niedrig und die Marge bricht ein.
+**Die Doppelzaehlungs-Falle — geloest, aber du musst wissen wie.** Bei FMP liegen die
+Aufwandsspalten auf verschiedenen Hierarchie-Ebenen:
 
-**So wird es geprueft — an den Ist-Daten, nicht an der Prognose:** Man rechnet die
-Summenformel fuer ein historisches Jahr durch und vergleicht sie mit dem von FMP
-gelieferten `operatingIncome` desselben Jahres. Stimmen beide ueberein, ist die
-Spaltenauswahl richtig. Weichen sie ab, wird doppelt gezaehlt oder ein Posten fehlt.
-**Dieser Abgleich sollte laufen, bevor die erste Prognosezahl entsteht** — er
-beantwortet die offene Entscheidung Nr. 1 aus Teil 8 empirisch statt durch Raten.
+```
+operatingExpenses                          <- Sammelposten
+├── researchAndDevelopmentExpenses
+└── sellingGeneralAndAdministrativeExpenses
+    ├── generalAndAdministrativeExpenses
+    └── sellingAndMarketingExpenses
+```
+
+Wer Eltern und Kinder zusammen abzieht, zaehlt dieselben Kosten zweimal. Gemessen an
+Apple: die urspruengliche Vierer-Auswahl (`costOfRevenue`, SG&A, `operatingExpenses`,
+D&A) erzeugte 2025 einen Fehler von **39 Mrd. USD** — 30 % des Betriebsergebnisses,
+und die prognostizierte Marge fiel von 32,0 % auf 22,5 %.
+
+**Der Abgleich laeuft jetzt automatisch** in `get_expenses_quota()` (Teil 2). Er
+vergleicht `revenue - Summe(Spalten)` mit dem gemeldeten `operatingIncome` — und zwar
+ueber **alle** Jahre, damit eine falsche Auswahl nicht zufaellig in einem Einzeljahr
+durchrutscht.
+
+**Der Kontroll-Trick, den du immer anwenden kannst:**
+
+```
+Summe aller Aufwandsquoten  +  operative Marge  =  1
+```
+
+Bei zwei Spalten geht das exakt auf. Bei der alten Vierer-Auswahl ueberschoss die
+Summe um rund 9 Prozentpunkte — genau die doppelt gezaehlten Kosten.
 
 ---
 
@@ -577,9 +631,9 @@ Merksatz: **Das LLM setzt Quoten. Python rechnet.**
 
 | Nr. | Entscheidung | Wer | Rueckfall ohne LLM |
 |---|---|---|---|
-| 1 | Wareneinsatzquote je Prognosejahr | **LLM** | letzte historische Quote konstant |
-| 2 | Quote der uebrigen Aufwandsposten je Jahr | **LLM** | letzte historische Quote konstant |
-| 3 | Verwaltungsaufwandsquote | **LLM** | letzte historische Quote konstant |
+| 1 | `costOfRevenue`-Quote je Prognosejahr | **LLM** | letzte historische Quote konstant |
+| 2 | `operatingExpenses`-Quote je Prognosejahr | **LLM** | letzte historische Quote konstant |
+| 3 | *(im PDF: Verwaltungsaufwand — bei uns in `operatingExpenses` enthalten)* | — | — |
 | 4 | Investitionsquote je Prognosejahr | **LLM** | durchschnittliche historische Quote |
 | 5 | Nutzungsdauer | Python | — (Formel, kein Urteil) |
 | 6 | Abschreibungsschichten inkl. Deckelung | **Python, niemals LLM** | — |
@@ -588,8 +642,10 @@ Merksatz: **Das LLM setzt Quoten. Python rechnet.**
 | 9 | Einmaleffekte = 0 | feste Annahme | — |
 | 10 | Betriebsergebnis | Python | — |
 
-Vier LLM-Aufrufe also — und alle vier haben dieselbe Struktur: *"Hier ist eine
-Quotenreihe. Setze die Quote fuer die naechsten Jahre und begruende es."*
+Im PDF waeren das vier Urteile. Bei der Zwei-Spalten-Aufteilung sind es zwei
+Quotenurteile plus die Investitionsquote — und alle haben dieselbe Struktur: *"Hier ist
+eine Quotenreihe. Setze die Quote fuer die naechsten Jahre und begruende es."*
+`get_llm_quota()` holt sie in **einem** Aufruf ab, nicht in mehreren.
 
 **Was das LLM darf:**
 
@@ -686,7 +742,7 @@ Die Reihenfolge folgt nicht der Nummerierung des Guides, sondern der Schwierigke
 
 | Quelle | Felder | Status |
 |---|---|---|
-| `FMP.get_income_statement()` | `revenue`, `costOfRevenue`, `sellingGeneralAndAdministrativeExpenses`, `operatingExpenses`, `depreciationAndAmortization`, `operatingIncome` | **da** |
+| `FMP.get_income_statement()` | `revenue`, `costOfRevenue`, `operatingExpenses`, `operatingIncome` (`operatingIncome` wird fuer den Vollstaendigkeits-Check gebraucht) | **da** |
 | `FMP.get_balance_sheet()` | `propertyPlantEquipmentNet`, Beteiligungsbuchwert | **fehlt** |
 | `FMP.get_cash_flow()` | `capitalExpenditure` | **fehlt** |
 | `SEC.get_companyconcept("PropertyPlantAndEquipmentGross")` | Sachanlagen brutto (rohes JSON, muss gefiltert werden) | **da** |
@@ -711,17 +767,18 @@ Durchschnittsbestand und ergeben deshalb nur 5 Werte.
 
 **Was:** `Aufwand(t) / Umsatz(t)` ueber alle Jahre, angewandt auf jede Aufwandsspalte.
 
-**Zu bauen:** nichts — `Calculus.get_cost_quota()` existiert. Es wird nur die
-**Spaltenliste** festgelegt und der Aufruf gemacht.
+**Zu bauen:** nichts — `Calculus.get_expenses_quota()` existiert. Die Spaltenliste
+steht fest: `["costOfRevenue", "operatingExpenses"]`.
 
 **Warum zuerst:** Es ist die kleinste sinnvolle Einheit, und du siehst sofort echte
 Zahlen — steigen die Quoten, fallen sie, schwanken sie? Diese Anschauung brauchst du
 fuer jede weitere Entscheidung.
 
-**Hier gehoert der Doppelzaehlungs-Test aus Teil 5 hin:** Summenformel gegen
-`operatingIncome` eines Ist-Jahres pruefen, bevor weitergebaut wird.
+**Der Doppelzaehlungs-Test aus Teil 5 laeuft hier automatisch mit** —
+`get_expenses_quota()` prueft die Spaltenauswahl selbst und wirft bei einer Abweichung
+ueber 0,5 % eine Exception.
 
-**Ergebnis:** Eine Quotentabelle. Noch keine Prognose.
+**Ergebnis:** Eine Quotentabelle. Noch keine Prognose. **Status: erledigt.**
 
 ---
 
@@ -813,12 +870,14 @@ Diese Punkte kann kein Dokument fuer dich beantworten — sie legen den Umfang f
 - **Ein generischer Prompt, ein Aufruf.** `get_llm_quota()` schickt alle Quotenreihen
   in einem einzigen LLM-Aufruf und bekommt je Posten sechs Quoten zurueck (Teil 6).
 - **Strukturierte Antwort ueber Tool Use**, nicht ueber Text-Parsing (Teil 6).
+- **Zwei Aufwandsspalten statt der vier PDF-Posten:** `costOfRevenue` und
+  `operatingExpenses`, empirisch gegen `operatingIncome` belegt (Teil 8, Nr. 1).
 
 ### Noch offen
 
 | Nr. | Frage | Blockiert |
 |---|---|---|
-| 1 | Welche Aufwandsposten einzeln, welche zusammengefasst? | Stufe 1 |
+| ~~1~~ | ~~Welche Aufwandsposten einzeln, welche zusammengefasst?~~ **entschieden: `costOfRevenue` + `operatingExpenses`** | — |
 | 2 | Rueckfall-Regel: letzte Quote, Durchschnitt oder Trend? **Noch nicht gebaut — `get_llm_quota()` wirft heute einen Fehler statt zurueckzufallen.** | Stufe 2 |
 | 3 | Datenstruktur der Abschreibungsschichten-Tabelle | Stufe 3 |
 | 4 | Nutzungsdauer runden oder exakt? | Stufe 3 |
@@ -827,12 +886,22 @@ Diese Punkte kann kein Dokument fuer dich beantworten — sie legen den Umfang f
 | ~~7~~ | ~~Ein generischer LLM-Prompt fuer alle vier Quoten, oder vier eigene?~~ **entschieden: ein generischer Prompt, ein Aufruf fuer alle Posten** | — |
 | 8 | Prognosehorizont und Anzahl historischer Jahre: Parameter oder fest? | alle |
 
-**Zu Nr. 1:** FMP liefert `costOfRevenue`, `sellingGeneralAndAdministrativeExpenses`,
-`operatingExpenses`, `depreciationAndAmortization`. Die PDF-Aufteilung
-(Filialbetriebskosten vs. sonstige betriebliche Aufwendungen) existiert in FMP nicht.
-*Achtung Doppelzaehlung:* `operatingExpenses` enthaelt je nach Anbieter bereits die
-SG&A- und AfA-Zeilen. Der Abgleich gegen `operatingIncome` aus Teil 5 beantwortet
-das empirisch.
+**Zu Nr. 1 — wie es entschieden wurde.** Die PDF-Aufteilung (Wareneinsatz,
+Filialbetriebskosten, sonstige, Verwaltung) ist im Guide selbst als
+`[SBUX-SPEZIFISCH]` markiert und existiert in FMP nicht. Statt zu raten, wurde
+gemessen: Fuer 16 Firmen (AAPL, MSFT, TSLA, SBUX, KO, NKE, JPM, XOM, PFE, AMZN, GOOGL,
+META, NFLX, INTC, WMT, DIS) rechnet `["costOfRevenue", "operatingExpenses"]` den Umsatz
+in jedem Jahr korrekt auf `operatingIncome` herunter.
+
+**Eine feinere Aufteilung waere moeglich:** `researchAndDevelopmentExpenses +
+sellingGeneralAndAdministrativeExpenses + otherExpenses` summiert sich exakt zu
+`operatingExpenses`. Vier Spalten waeren also erlaubt.
+
+**Warum trotzdem zwei:** Das Betriebsergebnis ist identisch — Schritt 2 endet dort, und
+die Summe aendert sich nicht. Vier Spalten verdoppeln nur die Zahl der LLM-Urteile.
+**Was dabei aufgegeben wird:** Gegenlaeufige Entwicklungen innerhalb von
+`operatingExpenses` — etwa steigende Forschungs- bei fallenden Verwaltungskosten — sieht
+das LLM nur noch als Saldo.
 
 **Zu Nr. 2:** Der Guide nennt fuer Kostenquoten "letzte Quote", fuer die
 Investitionsquote "Durchschnitt". Uebernehmen oder vereinheitlichen?
@@ -847,8 +916,8 @@ schrittweise entschieden werden.
 | Teil | Was | Zu bauen |
 |---|---|---|
 | 1 | Fix-/Variabel-Trennung | nichts |
-| 2 A | Quotenreihe `Aufwand/Umsatz` | nichts — `get_cost_quota()` existiert |
-| 2 B | Fortschreibung `Umsatz x Quote` | **neu** — deckt 5 Anwendungsfaelle ab |
+| 2 A | Quotenreihe `Aufwand/Umsatz` + Vollstaendigkeits-Check | **gebaut** — `get_expenses_quota()` |
+| 2 B | Fortschreibung `Umsatz x Quote` | **neu — der naechste Schritt**, deckt 3 Anwendungsfaelle ab |
 | 3 | Gruppierung A/B/C | nichts — Bauanleitung |
 | 4.0 | `get_balance_sheet()`, `get_cash_flow()` | **neu** |
 | 4.1 | Nutzungsdauer | **neu** — braucht SEC-Bruttowert |
