@@ -154,7 +154,7 @@ class Calculus:
         # The LLM reads plain text, so the quota table becomes a markdown table.
         table = self.data_calculated[["date"] + columns_quota].to_markdown(index=False)
         prompt_file = Path(__file__).resolve().parent.parent / "prompts" / "llm_quota.md"
-        answer = LLMCall("claude-haiku-4-5-20251001").llm_call(
+        answer = LLMCall("claude-opus-5").llm_call(
             [table] + context,
             SYSTEM_PROMPT_QUOTA,
             prompt_file.read_text(encoding="utf-8"),
