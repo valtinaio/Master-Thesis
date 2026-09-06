@@ -5,8 +5,18 @@ Service to perform calculations on financial data provided as a pandas DataFrame
 # ---------------------------
 # Imports
 # ---------------------------
+from pathlib import Path
+
 import pandas as pd
+
 from stock_agent.config import LONGTERM_GROWTH_RATE
+from stock_agent.pydantic_models.pydantic_models import LLMQuota
+from stock_agent.services.llm_call import LLMCall
+
+# The model gets the role here; the task itself is described in prompts/llm_quota.md.
+SYSTEM_PROMPT_QUOTA = (
+    "You are a professional stock analyst, searching for profitable investment possibilities."
+)
 
 
 class Calculus:
@@ -21,6 +31,7 @@ class Calculus:
             {"date": [last_date + pd.DateOffset(years=year) for year in range(1, 7)]}
         )
         self.cagr = None
+        self.llm_quota_response = None
 
     def get_growth_rate(self, column: str):
         """Calculate the period-over-period growth rate of the given value column.
@@ -107,3 +118,49 @@ class Calculus:
             raise ValueError(
                 f"The date-column, the revenue-column or the columns '{columns_costs}' are missing in your pd.DataFrame"
             )
+
+    def get_llm_quota(self, context: list):
+        """Let an LLM set the cost quotas of the next six years for every quota column.
+        Adds one prediction column per quota column to self.data_predictions."""
+
+        # Every column written by get_cost_quota() ends with '_quota'.
+        columns_quota = [
+            column for column in self.data_calculated.columns if column.endswith("_quota")
+        ]
+        if not columns_quota:
+            raise ValueError(
+                "self.data_calculated holds no quota column. "
+                "You must calculate the quotas with get_cost_quota() first"
+            )
+
+        # The LLM reads plain text, so the quota table becomes a markdown table.
+        table = self.data_calculated[["date"] + columns_quota].to_markdown(index=False)
+        prompt_file = Path(__file__).resolve().parent.parent / "prompts" / "llm_quota.md"
+        answer = LLMCall("claude-haiku-4-5-20251001").llm_call(
+            [table] + context,
+            SYSTEM_PROMPT_QUOTA,
+            prompt_file.read_text(encoding="utf-8"),
+            response_model=LLMQuota,
+            tool_name="llm_quota",
+        )
+
+        # With a forced tool the answer holds a ToolUseBlock, whose .input is already a dict.
+        blocks_tool = [block for block in answer if block.type == "tool_use"]
+        if not blocks_tool:
+            raise ValueError(
+                f"The LLM answered without using the tool 'llm_quota', so it returned no "
+                f"quotas. Blocks received: {[block.type for block in answer]}"
+            )
+        self.llm_quota_response = LLMQuota(**blocks_tool[0].input)
+
+        for column in columns_quota:
+            if column not in self.llm_quota_response.quotas:
+                raise ValueError(f"The LLM returned no quotas for the column '{column}'")
+            quotas = self.llm_quota_response.quotas[column].quotas
+            # One quota per forecast year, otherwise the column does not fit the DataFrame.
+            if len(quotas) != len(self.data_predictions):
+                raise ValueError(
+                    f"The LLM returned {len(quotas)} quotas for the column '{column}', "
+                    f"but {len(self.data_predictions)} forecast years are needed"
+                )
+            self.data_predictions[column + "_llm"] = quotas

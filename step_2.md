@@ -313,12 +313,16 @@ Eine Rechenmethode, die aus zwei Zeitreihen eine einzige Zahl macht.
 **Datenherkunft — das ist der kritische Punkt:** Die Formel braucht Sachanlagen zu
 *Anschaffungskosten* (brutto). FMP liefert nur `propertyPlantEquipmentNet` (netto).
 Der Bruttowert kommt aus
-`SEC.get_concept("PropertyPlantAndEquipmentGross")`. **Das ist der einzige Grund,
-warum in Schritt 2 ueberhaupt die SEC-API gebraucht wird.**
+`SEC.get_companyconcept("PropertyPlantAndEquipmentGross")`.
 
-`SEC.get_concept()` gibt eine Liste von dicts zurueck (`start`, `end`, `value`, ...),
-sortiert nach `end`. Der FMP-DataFrame ist nach `date` sortiert. Beide muessen ueber
-das Jahr zusammengefuehrt werden, bevor die Formel rechnen kann.
+`SEC.get_companyconcept()` gibt das **rohe JSON** der SEC zurueck. Die Werte stehen
+verschachtelt unter `["units"]["USD"]` als Liste von dicts (`start`, `end`, `val`,
+`fy`, `fp`, `form`, ...). **Achtung:** Diese Liste ist weder gefiltert noch sortiert,
+und dieselbe Periode kommt mehrfach vor, weil jeder Bericht die Vorjahre wiederholt
+(bei Apple 120 Eintraege fuer rund 15 Jahre). Wer den Jahreswert braucht, muss selbst
+nach `form == "10-K"` filtern, je Periode den zuletzt gemeldeten Wert behalten und
+nach `end` sortieren. Erst danach laesst sich die Reihe ueber das Jahr mit dem
+FMP-DataFrame zusammenfuehren.
 
 **Achtung Jahresbedarf:** Der Durchschnittsbestand kostet ein Jahr (Guide, Regel 2).
 Aus 6 Jahren brutto entstehen nur **5** Nutzungsdauer-Werte.
@@ -622,39 +626,54 @@ rekonstruiert wird.
 
 ### In Python
 
-Drei Teile — und **keiner davon aendert eine bestehende Rechenmethode**. Die
-LLM-Quote wird lediglich anstelle der Rueckfall-Quote in den Fortschreibungs-Baustein
-aus Teil 2 gegeben.
+**Dieser Teil ist gebaut.** Er weicht in einem Punkt vom Entwurf oben ab: es gibt
+**einen** Aufruf fuer alle Aufwandsposten zusammen, nicht vier einzelne.
 
-**1. Der Aufruf. Existiert bereits.**
-`services/llm_call.py` mit `LLMCall(model).llm_call(context, system_prompt, prompt)`.
-Rueckgabe ist `response.content` — Index 0 ein ThinkingBlock, Index 1 ein TextBlock
-mit dem eigentlichen Antworttext.
+**1. Der Aufruf.** `services/llm_call.py` mit
+`LLMCall(model).llm_call(context, system_prompt, prompt, response_model, tool_name)`.
+Die letzten beiden Argumente sind neu und optional. Ohne sie verhaelt sich die
+Methode wie vorher (Thinking an, Rueckgabe ThinkingBlock + TextBlock).
 
-**2. Ein Antwortmodell.** Der Guide legt drei Felder fest, einheitlich fuer alle
-LLM-Stellen des gesamten FSAP:
+**2. Das Antwortmodell. Steht in `pydantic_models/pydantic_models.py`:**
 
-| Feld | Inhalt |
+| Klasse | Feld | Inhalt |
+|---|---|---|
+| `QuotaForecast` | `quotas` | die sechs Quoten, Year +1 bis +6 |
+| | `reasoning` | ein bis zwei Saetze, warum genau diese Werte |
+| | `confidence` | `high` / `medium` / `low` |
+| `LLMQuota` | `quotas` | ein `QuotaForecast` je Aufwandsposten, Schluessel ist der Spaltenname |
+
+**Wie der Text ins Modell kommt — die offene Frage von oben ist beantwortet:** gar
+nicht ueber Text. Das Schema des Pydantic-Modells wird der API als *Tool* uebergeben
+(`response_model.model_json_schema()`), und `tool_choice` zwingt das Modell, es
+auszufuellen. Die Antwort ist dann ein `ToolUseBlock`, dessen `.input` bereits ein
+fertiges dict ist — kein Parsen, kein `json.loads()`. Pydantic prueft danach nur noch,
+ob wirklich sechs Zahlen kamen und ob `confidence` einen erlaubten Wert hat.
+
+**Ein technisches Detail:** Thinking und erzwungenes `tool_choice` schliessen sich bei
+Anthropic gegenseitig aus. `llm_call()` setzt Thinking deshalb nur, wenn kein
+`response_model` uebergeben wurde.
+
+**3. Ein Prompt, nicht vier.** `prompts/llm_quota.md`, englisch. Er erklaert die
+Common-Size-Methode, nennt die drei Fortschreibungs-Varianten aus Teil 2 und warnt vor
+der fallenden Quote. Das Format fordert er **nicht** an — das erzwingt das Tool-Schema.
+
+**4. Die Methode.** `Calculus.get_llm_quota(context)` in `services/calculus.py`:
+
+| | |
 |---|---|
-| `wert` | die Quote bzw. die Quotenreihe |
-| `begruendung` | ein bis zwei Saetze, warum genau dieser Wert |
-| `konfidenz` | hoch / mittel / niedrig |
+| Eingang | `context` = Liste zusaetzlicher Texte (SEC-Dokumente); die Quotentabelle haengt die Methode selbst vorne an |
+| Ablauf | alle Spalten auf `_quota` filtern, als Markdown-Tabelle formatieren, Prompt laden, aufrufen, Antwort validieren |
+| Ausgang | je Posten eine Spalte `<spalte>_quota_llm` in `data_predictions`; das volle Objekt in `self.llm_quota_response` |
 
-Ort: `pydantic_models/pydantic_models.py` (Architekturregel 4). Weil `llm_call()`
-Text zurueckgibt, muss dieser Text in das Modell ueberfuehrt werden — der Weg dorthin
-(JSON im Prompt anfordern und parsen, oder ein anderer) ist offen.
+Bei fehlendem Tool-Block, fehlendem Posten oder falscher Anzahl Quoten wirft die
+Methode einen `ValueError`.
 
-**3. Ein Prompt, nicht vier.** Alle vier Stellen fragen dasselbe. Gebraucht wird ein
-**generischer Prompt mit Parametern**: Name des Postens, Quotenreihe, Branche,
-Anzahl Prognosejahre — bei der Investitionsquote zusaetzlich das Anlagenalter.
+**5. Der Rueckfall ist noch nicht gebaut.** Der Entwurf sah vor, dass bei fehlender
+Antwort oder `confidence = low` die letzte historische Quote greift. Aktuell wirft die
+Methode stattdessen einen Fehler. **Schritt 2 laeuft damit noch nicht ohne LLM durch** —
+das bleibt offen.
 
-**4. Der Rueckfall bleibt bestehen.** Bei fehlender Antwort, Parse-Fehler oder
-`konfidenz = niedrig` greift die Regel aus der Tabelle oben.
-**Schritt 2 muss ohne LLM vollstaendig durchlaufen** — nur eben konservativ. Genau
-deshalb kommt das LLM in der Baureihenfolge zuletzt (Teil 7, Stufe 5).
-
-> **Offene Entscheidung (Teil 8, Nr. 7):** ein generischer Prompt oder vier eigene.
-> Teil 6 empfiehlt einen generischen (DRY).
 
 ---
 
@@ -670,7 +689,7 @@ Die Reihenfolge folgt nicht der Nummerierung des Guides, sondern der Schwierigke
 | `FMP.get_income_statement()` | `revenue`, `costOfRevenue`, `sellingGeneralAndAdministrativeExpenses`, `operatingExpenses`, `depreciationAndAmortization`, `operatingIncome` | **da** |
 | `FMP.get_balance_sheet()` | `propertyPlantEquipmentNet`, Beteiligungsbuchwert | **fehlt** |
 | `FMP.get_cash_flow()` | `capitalExpenditure` | **fehlt** |
-| `SEC.get_concept("PropertyPlantAndEquipmentGross")` | Sachanlagen brutto | **da** |
+| `SEC.get_companyconcept("PropertyPlantAndEquipmentGross")` | Sachanlagen brutto (rohes JSON, muss gefiltert werden) | **da** |
 
 **Was gebaut wird:** `get_balance_sheet()` und `get_cash_flow()` in
 `services/fmp_api.py`. Beide Endpunkte stehen bereits in `FMP._endpoints`
@@ -759,9 +778,10 @@ nachvollziehbar, ohne LLM.
 eine LLM-gesetzte Quote. Der Rueckfall bleibt bestehen und greift bei fehlender oder
 niedrig-konfidenter Antwort.
 
-**Zu bauen:** das Antwortmodell in `pydantic_models.py`, der generische Prompt, und
-die Uebergabe der LLM-Quote an den Fortschreibungs-Baustein. `services/llm_call.py`
-steht bereits.
+**Zu bauen:** nur noch die Uebergabe der LLM-Quote an den Fortschreibungs-Baustein
+und der Rueckfall. Das Antwortmodell (`LLMQuota`, `QuotaForecast`), der Prompt
+(`prompts/llm_quota.md`), die Tool-Use-Erweiterung von `llm_call()` und
+`Calculus.get_llm_quota()` stehen bereits.
 
 **Warum zuletzt:** Du hast dann eine deterministische Vergleichsbasis. Du siehst genau,
 was das LLM an der Prognose veraendert — und das ist fuer die Thesis ein starkes
@@ -776,7 +796,8 @@ Argument, weil du den Beitrag des LLM messen kannst statt ihn zu behaupten.
 | `get_balance_sheet()`, `get_cash_flow()` | `services/fmp_api.py` | Datenimport |
 | Quotenberechnung, Fortschreibung, Nutzungsdauer, Abschreibungsschichten, Sachanlagen | `services/calculus.py` | Reine Rechenlogik, wiederverwendbar |
 | Orchestrierung von Schritt 2, Betriebsergebnis | `sub_graphs/fsap.py` | Sub-Graph konsumiert Services |
-| LLM-Antwortmodell, Ein- und Ausgaben | `pydantic_models/pydantic_models.py` | Architekturregel 4 |
+| LLM-Antwortmodell (`LLMQuota`, `QuotaForecast`) | `pydantic_models/pydantic_models.py` | Architekturregel 4 |
+| Prompt fuer die Quotensetzung | `prompts/llm_quota.md` | Text, kein Code |
 
 Sub-Graphs konsumieren Services und niemals andere Sub-Graphs (Architekturregel 3).
 
@@ -789,18 +810,21 @@ Diese Punkte kann kein Dokument fuer dich beantworten — sie legen den Umfang f
 ### Bereits entschieden
 
 - **2.1 wird nicht implementiert.** Nur Common-Size (Teil 1).
+- **Ein generischer Prompt, ein Aufruf.** `get_llm_quota()` schickt alle Quotenreihen
+  in einem einzigen LLM-Aufruf und bekommt je Posten sechs Quoten zurueck (Teil 6).
+- **Strukturierte Antwort ueber Tool Use**, nicht ueber Text-Parsing (Teil 6).
 
 ### Noch offen
 
 | Nr. | Frage | Blockiert |
 |---|---|---|
 | 1 | Welche Aufwandsposten einzeln, welche zusammengefasst? | Stufe 1 |
-| 2 | Rueckfall-Regel: letzte Quote, Durchschnitt oder Trend? | Stufe 2 |
+| 2 | Rueckfall-Regel: letzte Quote, Durchschnitt oder Trend? **Noch nicht gebaut — `get_llm_quota()` wirft heute einen Fehler statt zurueckzufallen.** | Stufe 2 |
 | 3 | Datenstruktur der Abschreibungsschichten-Tabelle | Stufe 3 |
 | 4 | Nutzungsdauer runden oder exakt? | Stufe 3 |
 | 5 | Renditeannahme fuer Beteiligungen: fest, Parameter oder aus Historie? | Stufe 4 |
 | 6 | Klasse oder Funktionen? Bei Klasse: welche Attribute? | alle |
-| 7 | Ein generischer LLM-Prompt fuer alle vier Quoten, oder vier eigene? | Stufe 5 |
+| ~~7~~ | ~~Ein generischer LLM-Prompt fuer alle vier Quoten, oder vier eigene?~~ **entschieden: ein generischer Prompt, ein Aufruf fuer alle Posten** | — |
 | 8 | Prognosehorizont und Anzahl historischer Jahre: Parameter oder fest? | alle |
 
 **Zu Nr. 1:** FMP liefert `costOfRevenue`, `sellingGeneralAndAdministrativeExpenses`,
@@ -833,4 +857,4 @@ schrittweise entschieden werden.
 | 4.4 | Sachanlagen brutto/AfA/netto | **neu** |
 | 4 C | Beteiligungsergebnis | **neu**, klein |
 | 5 | Betriebsergebnis + Marge | **neu**, im Sub-Graph |
-| 6 | LLM-Antwortmodell + generischer Prompt | **neu** — `llm_call()` existiert |
+| 6 | LLM-Antwortmodell + generischer Prompt + `get_llm_quota()` | **gebaut** |

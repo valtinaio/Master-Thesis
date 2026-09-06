@@ -9,6 +9,8 @@ dependencies = [
     "typing",
     "python-dotenv",
     "anthropic",
+    "tabulate",
+    "beautifulsoup4",
     "typing"
 ]
 

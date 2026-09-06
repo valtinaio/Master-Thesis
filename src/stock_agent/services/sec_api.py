@@ -7,9 +7,15 @@ reported separately from amortization or the statutory tax rate.
 # ---------------------------
 # Imports
 # ---------------------------
+import re
+import warnings
 from typing import Literal
 
 import requests
+from bs4 import BeautifulSoup, XMLParsedAsHTMLWarning
+
+# Modern filings are XHTML, which makes the HTML parser warn on every single call.
+warnings.filterwarnings("ignore", category=XMLParsedAsHTMLWarning)
 
 # The SEC requires every request to identify the caller by mail address.
 DEFAULT_USER_AGENT = "valti.luther@gmail.com"
@@ -27,22 +33,36 @@ class SEC:
     """Imports filings and XBRL facts of one symbol from the SEC; every method fetches on demand."""
 
     def __init__(self, symbol: str, user_agent_mail: str = DEFAULT_USER_AGENT):
-        """Store the symbol and the request headers without performing any request."""
+        """Store the symbol, the request headers and the endpoints, and look up the CIK."""
 
         self.symbol = str(symbol).upper()
         self._headers = {"User-Agent": user_agent_mail}
         self._tickers_url = "https://www.sec.gov/files/company_tickers.json"
+        self._endpoints = [
+            "https://data.sec.gov/submissions",
+            "https://data.sec.gov/api/xbrl/companyfacts",
+            "https://data.sec.gov/api/xbrl/companyconcept",
+            "https://www.sec.gov/Archives/edgar/data",
+        ]
+        # Every endpoint below needs the CIK, so it is fetched once and reused.
+        self.cik = self.get_cik()
 
     # ---------------------------
     # Internal request helper
     # ---------------------------
-    def _get(self, url: str) -> dict:
-        """Send one GET request to the SEC and return the parsed JSON."""
+    def _get(self, url: str, html: bool = False) -> dict | str:
+        """Send one GET request to the SEC and return the parsed JSON,
+        or the plain text of the page when html is True."""
 
         response = requests.get(url, headers=self._headers)
         if response.status_code != 200:
             raise SECError(f"'{url}' failed with HTTP {response.status_code}: {response.text[:200]}")
-        return response.json()
+        if not html:
+            return response.json()
+        # get_text() drops every tag, the regex collapses the leftover whitespace into
+        # single blanks, so the result is one readable block of text.
+        text = BeautifulSoup(response.text, "html.parser").get_text(" ")
+        return re.sub(r"\s+", " ", text).strip()
 
     # ---------------------------
     # Company identification
@@ -58,80 +78,68 @@ class SEC:
         raise SECError(f"The symbol '{self.symbol}' was not found in the SEC ticker list.")
 
     # ---------------------------
-    # Filings
+    # Endpoints
     # ---------------------------
-    def get_filings(self, form: FilingForm = "10-K", limit: int = 5) -> list[dict]:
-        """Return the most recent filings of one form type, including the document URL of each."""
+    def get_submissions(self) -> dict:
+        """Return the company profile and the metadata of all its recent filings."""
 
-        cik = self.get_cik()
-        submissions = self._get(f"https://data.sec.gov/submissions/CIK{cik}.json")
-        recent = submissions["filings"]["recent"]
+        return self._get(f"{self._endpoints[0]}/CIK{self.cik}.json")
 
-        filings = []
-        # The SEC returns parallel lists, so one index describes one filing across all lists.
-        for index, filing_form in enumerate(recent["form"]):
-            if filing_form != form:
-                continue
-            accession = recent["accessionNumber"][index].replace("-", "")
-            document = recent["primaryDocument"][index]
-            filings.append({
-                "form": filing_form,
-                "filing_date": recent["filingDate"][index],
-                "report_date": recent["reportDate"][index],
-                "accession_number": recent["accessionNumber"][index],
-                "document_url": (f"https://www.sec.gov/Archives/edgar/data/"
-                                 f"{int(cik)}/{accession}/{document}"),
-            })
-            if len(filings) == limit:
-                break
-        return filings
-
-    # ---------------------------
-    # XBRL data
-    # ---------------------------
-    def get_company_facts(self) -> dict:
+    def get_companyfacts(self) -> dict:
         """Return all XBRL facts the company has ever reported, grouped by taxonomy and tag."""
 
-        cik = self.get_cik()
-        return self._get(f"https://data.sec.gov/api/xbrl/companyfacts/CIK{cik}.json")
+        return self._get(f"{self._endpoints[1]}/CIK{self.cik}.json")
 
-    def get_concept(self,
-                    tag: str,
-                    unit: str = "USD",
-                    period: FactPeriod = "annual",
-                    taxonomy: str = "us-gaap") -> list[dict]:
-        """Return one reported line item over time, for example the tag 'DepreciationDepletionAndAmortization'."""
+    def get_companyconcept(self, tag: str, taxonomy: str = "us-gaap") -> dict:
+        """Return one reported line item over time, for example the tag
+        'DepreciationDepletionAndAmortization', with all its units and periods."""
 
-        cik = self.get_cik()
-        concept = self._get(f"https://data.sec.gov/api/xbrl/companyconcept/"
-                            f"CIK{cik}/{taxonomy}/{tag}.json")
-        if unit not in concept["units"]:
-            raise SECError(f"The tag '{tag}' is not reported in the unit '{unit}'.")
+        return self._get(f"{self._endpoints[2]}/CIK{self.cik}/{taxonomy}/{tag}.json")
 
-        # The form tells the period length: 10-K reports a year, 10-Q reports a quarter.
-        wanted_forms = {"annual": ["10-K"], "quarterly": ["10-Q"]}.get(period)
+    def get_archives(self, form: FilingForm = "10-K", index: int = 0) -> dict:
+        """Return the text of one filing, split into its items, for example 'item_1a'.
+        index 0 is the most recent filing of that form type."""
 
-        # One period appears in several filings, because every report repeats the previous
-        # periods as comparatives. Keyed by period, the last entry wins and that is the
-        # most recently filed value, which also reflects any later restatement.
-        facts = {}
-        for fact in concept["units"][unit]:
-            if wanted_forms is not None and fact["form"] not in wanted_forms:
-                continue
-            facts[(fact.get("start"), fact["end"])] = {
-                "start": fact.get("start"),
-                "end": fact["end"],
-                "value": fact["val"],
-                "fiscal_year": fact["fy"],
-                "fiscal_period": fact["fp"],
-                "form": fact["form"],
-            }
-        # Sorted by end date, so the oldest period comes first and the newest last.
-        return sorted(facts.values(), key=lambda fact: fact["end"])
+        recent = self.get_submissions()["filings"]["recent"]
+        # The SEC returns parallel lists, so one position describes one filing across all lists.
+        positions = [n for n, filed in enumerate(recent["form"]) if filed == form]
+        if index >= len(positions):
+            raise SECError(
+                f"'{self.symbol}' has only {len(positions)} recent filings of the form "
+                f"'{form}', so index {index} does not exist."
+            )
+        position = positions[index]
+        # The URL holds the accession number without its dashes and the CIK without zeros.
+        accession = recent["accessionNumber"][position].replace("-", "")
+        url = (f"{self._endpoints[3]}/{int(self.cik)}/{accession}/"
+               f"{recent['primaryDocument'][position]}")
+        return self._split_items(self._get(url, html=True))
+
+    # ---------------------------
+    # Internal text helper
+    # ---------------------------
+    @staticmethod
+    def _split_items(text: str) -> dict:
+        """Split the text of a filing into its items and return them keyed by 'item_<number>'."""
+
+        # Matches headings like 'Item 1.', 'ITEM 1A:' or 'Item 7 -' and keeps the number.
+        headings = [(found.group(1).upper(), found.start())
+                    for found in re.finditer(r"Item\s+(\d{1,2}[A-C]?)\s*[\.\:\-]", text, re.I)]
+
+        # Every item number appears twice: once in the table of contents and once as the real
+        # heading. Keeping the longest section per number picks the real one.
+        sections = {}
+        for number, (item, start) in enumerate(headings):
+            end = headings[number + 1][1] if number + 1 < len(headings) else len(text)
+            if item not in sections or (end - start) > (sections[item][1] - sections[item][0]):
+                sections[item] = (start, end)
+        return {f"item_{item.lower()}": text[start:end]
+                for item, (start, end) in sections.items()}
 
 
 if __name__ == "__main__":
     starbucks = SEC("SBUX")
-    print("CIK:", starbucks.get_cik())
-    print("Filings:", starbucks.get_filings("10-K", limit=2))
-    print("Depreciation:", starbucks.get_concept("DepreciationDepletionAndAmortization")[:2])
+    print("CIK:", starbucks.cik)
+    print("Industry:", starbucks.get_submissions()["sicDescription"])
+    print("Gross PP&E:", starbucks.get_companyconcept("PropertyPlantAndEquipmentGross")["units"]["USD"][0])
+    print("Items:", list(starbucks.get_archives("10-K").keys()))
