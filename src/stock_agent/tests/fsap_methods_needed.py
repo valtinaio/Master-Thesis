@@ -18,34 +18,26 @@ aaple_revenue = aapl_income_statement[["date", "revenue"]]
 print(aaple_revenue)
 
 # 2 Revenue Growth Rate
-aaple_calculus = Calculus(aaple_revenue)
-aaple_revenue_gr = aaple_calculus.get_growth_rate("revenue")
-print(aaple_revenue_gr)
+aaple_calculus = Calculus(aapl_income_statement)
+aaple_calculus.get_growth_rate("revenue")
+aaple_calculus.data_calculated
 
 # 3 CAGR over complete time period
-aaple_cagr = aaple_calculus.get_CAGR("revenue")
-print(aaple_cagr)
+aaple_calculus.get_CAGR("revenue")
+aaple_calculus.cagr
 
 # 4 CAGR prediction for + 5 years plus year + 6 with long term growth rate
-aaple_cagr_pred = aaple_calculus.get_CAGR_prediction_plus_one("revenue", aaple_cagr.iloc[0, 1])
-print(aaple_cagr_pred)
+aaple_calculus.get_CAGR_prediction_plus_one("revenue")
+aaple_calculus.data_predictions
 
 # ---------------------------
 # Extracting costs and Quota
 # ---------------------------
-aaple_costs = aapl_income_statement[["date",
-                                    "revenue",
-                                    "costOfRevenue",
-                                    "sellingGeneralAndAdministrativeExpenses",
-                                    "operatingExpenses",
-                                    "depreciationAndAmortization"]]
-print(aaple_costs)
-# Example: operatingExpenses Quota
-aaple_calculus_1 = Calculus(aaple_costs)
-aaple_calculus_1.get_cost_quota(["costOfRevenue",
+aaple_calculus.get_cost_quota(["costOfRevenue",
                                  "sellingGeneralAndAdministrativeExpenses",
                                  "operatingExpenses",
                                  "depreciationAndAmortization"])
+aaple_calculus.data_calculated
 
 # ----------------------
 # LLM Calls
