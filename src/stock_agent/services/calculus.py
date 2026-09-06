@@ -100,9 +100,19 @@ class Calculus:
                 f"The date-column or the column '{column}' is missing in your pd.DataFrame"
             )
 
-    def get_cost_quota(self, columns_costs: list):
-        """Calculate the common-size quota of several cost columns relative to revenue.
-        Adds one quota column per cost column to self.data_calculated."""
+    def get_expenses_quota(self, columns_costs: list):
+        """Calculate the common-size quota of several expense columns relative to revenue.
+        Adds one quota column per expense column to self.data_calculated."""
+
+        # Revenue minus all operating expenses must give exactly the reported operating
+        # income. Any leftover means an expense is counted twice or one is missing.
+        check = (
+            self.data_raw["revenue"]
+            - self.data_raw[columns_costs].sum(axis=1)
+            - self.data_raw["operatingIncome"]
+        )
+        if (check != 0).any():
+            raise Exception("Your choice of expenses are not correct - check them.")
 
         if (
             "date" in self.data_raw.columns
@@ -123,14 +133,14 @@ class Calculus:
         """Let an LLM set the cost quotas of the next six years for every quota column.
         Adds one prediction column per quota column to self.data_predictions."""
 
-        # Every column written by get_cost_quota() ends with '_quota'.
+        # Every column written by get_expenses_quota() ends with '_quota'.
         columns_quota = [
             column for column in self.data_calculated.columns if column.endswith("_quota")
         ]
         if not columns_quota:
             raise ValueError(
                 "self.data_calculated holds no quota column. "
-                "You must calculate the quotas with get_cost_quota() first"
+                "You must calculate the quotas with get_expenses_quota() first"
             )
 
         # The LLM reads plain text, so the quota table becomes a markdown table.

@@ -31,13 +31,11 @@ aaple_calculus.cagr
 aaple_calculus.get_CAGR_prediction_plus_one("revenue")
 aaple_calculus.data_predictions
 
-# ---------------------------
-# Extracting costs and Quota
-# ---------------------------
-aaple_calculus.get_cost_quota(["costOfRevenue",
-                                 "sellingGeneralAndAdministrativeExpenses",
-                                 "operatingExpenses",
-                                 "depreciationAndAmortization"])
+# ------------------------------
+# Extracting expenses and Quota
+# ------------------------------
+aaple_calculus.get_expenses_quota(["costOfRevenue",
+                                   "operatingExpenses"])
 aaple_calculus.data_calculated
 
 # ----------------------------------
