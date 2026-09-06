@@ -13,6 +13,9 @@ from stock_agent.config import LONGTERM_GROWTH_RATE
 from stock_agent.pydantic_models.pydantic_models import LLMQuota
 from stock_agent.services.llm_call import LLMCall
 
+# Expenses may miss this share of revenue before the column choice counts as wrong.
+EXPENSES_TOLERANCE = 0.005
+
 # The model gets the role here; the task itself is described in prompts/llm_quota.md.
 SYSTEM_PROMPT_QUOTA = (
     "You are a professional stock analyst, searching for profitable investment possibilities."
@@ -104,15 +107,20 @@ class Calculus:
         """Calculate the common-size quota of several expense columns relative to revenue.
         Adds one quota column per expense column to self.data_calculated."""
 
-        # Revenue minus all operating expenses must give exactly the reported operating
-        # income. Any leftover means an expense is counted twice or one is missing.
+        # Revenue minus all operating expenses must give the reported operating income.
+        # A large leftover means an expense is counted twice or one is missing. Small
+        # leftovers happen because FMP does not map every reported line into a column,
+        # so the difference is measured relative to revenue and printed per year.
         check = (
             self.data_raw["revenue"]
             - self.data_raw[columns_costs].sum(axis=1)
             - self.data_raw["operatingIncome"]
         )
-        if (check != 0).any():
+        deviation = (check / self.data_raw["revenue"]).abs()
+        if (deviation > EXPENSES_TOLERANCE).any():
             raise Exception("Your choice of expenses are not correct - check them.")
+        for date, share in zip(self.data_raw["date"], deviation):
+            print(f"Expense check {date.year}: {share:.4%} of revenue unexplained")
 
         if (
             "date" in self.data_raw.columns

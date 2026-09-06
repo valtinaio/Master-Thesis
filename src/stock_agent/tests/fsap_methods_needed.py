@@ -51,12 +51,13 @@ aapl_items.keys()
 # LLM sets the quotas
 # ----------------------
 aaple_calculus.get_llm_quota([f"Industry: {aapl_industry}",
-                              "Management Discussion and Analysis: " + aapl_items["item_7"]])
-# The six quotas per cost column
+                              "Management Discussion and Analysis: " + aapl_items["item_7"],
+                              f"Revenue CAGR: {aaple_calculus.cagr["revenue_CAGR"]}"])
+# The six LLM predicted quotas per cost column
 aaple_calculus.data_predictions
 # Reasoning and confidence per cost column
-aaple_calculus.llm_quota_response.quotas["costOfRevenue_quota"].reasoning
-aaple_calculus.llm_quota_response.quotas["costOfRevenue_quota"].confidence
+aaple_calculus.llm_quota_response.quotas["operatingExpenses_quota"].reasoning
+aaple_calculus.llm_quota_response.quotas["operatingExpenses_quota"].confidence
 
 # ----------------------
 # LLM Calls
